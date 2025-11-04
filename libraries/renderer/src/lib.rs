@@ -1,22 +1,21 @@
 use anyhow::Result;
 use gst::glib::clone::Downgrade;
-use gst::prelude::{Cast, ElementExt, ElementExtManual, GstBinExtManual, PadExt};
-use gst_app;
+use gst::prelude::{Cast, ElementExt, GstBinExtManual, PadExt};
 use gst_app::AppSrc;
 use log::{error, info};
 
 pub struct GstRenderer {
     pipeline: gst::Pipeline,
-    appsrc: gst_app::AppSrc,
+    appsrc: AppSrc,
 }
 
 impl GstRenderer {
     pub fn new() -> Result<Self> {
         let caps = gst::Caps::builder("application/x-rtp")
-            .field("media", &"video")
-            .field("payload", &33i32)
-            .field("encoding-name", &"MP2T")
-            .field("clock-rate", &90000i32)
+            .field("media", "video")
+            .field("payload", 33i32)
+            .field("encoding-name", "MP2T")
+            .field("clock-rate", 90000i32)
             .build();
         let appsrc = AppSrc::builder()
             .caps(&caps)
@@ -49,7 +48,7 @@ impl GstRenderer {
 
         // Pipeline
         let pipeline = gst::Pipeline::new();
-        pipeline.add_many(&[
+        pipeline.add_many([
             appsrc.upcast_ref(),
             &buffer,
             &depay,
@@ -62,10 +61,10 @@ impl GstRenderer {
         ])?;
 
         // Link up to the demux statically
-        gst::Element::link_many(&[appsrc.upcast_ref(), &buffer, &depay, &demux])?;
+        gst::Element::link_many([appsrc.upcast_ref(), &buffer, &depay, &demux])?;
 
         // Link the rest of the chain (parse -> sink) statically
-        gst::Element::link_many(&[&parse, &decoder, &convert, &dec_queue, &sink])?;
+        gst::Element::link_many([&parse, &decoder, &convert, &dec_queue, &sink])?;
 
         // Dynamically link tsdemux to h264parse when the correct pad appears
         let parse_weak = parse.downgrade();
@@ -75,12 +74,12 @@ impl GstRenderer {
             };
 
             // Only accept H.264 video pads
-            if let Some(caps) = src_pad.current_caps() {
-                if let Some(structure) = caps.structure(0) {
-                    let name = structure.name().as_str();
-                    if name != "video/x-h264" {
-                        return; // Ignore non-H264 streams
-                    }
+            if let Some(caps) = src_pad.current_caps()
+                && let Some(structure) = caps.structure(0)
+            {
+                let name = structure.name().as_str();
+                if name != "video/x-h264" {
+                    return; // Ignore non-H264 streams
                 }
             }
 

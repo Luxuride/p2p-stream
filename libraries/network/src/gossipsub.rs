@@ -1,9 +1,7 @@
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use futures::StreamExt;
-use libp2p::gossipsub::{
-    self, Event as GossipsubEvent, IdentTopic, MessageAuthenticity, PublishError,
-};
+use libp2p::gossipsub::{self, Event as GossipsubEvent, IdentTopic, MessageAuthenticity};
 use libp2p::mdns;
 use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, identity};

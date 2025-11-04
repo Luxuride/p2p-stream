@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
         });
     }
 
-    let mut screen_capture = ScreenCapture::new();
+    let mut screen_capture = ScreenCapture::default();
     trace!("Starting screen capture...");
     screen_capture.start().await?;
     trace!("Setting up callback...");

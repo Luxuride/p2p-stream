@@ -1,15 +1,13 @@
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use libp2p::bytes::Buf;
 use libp2p::mdns;
-use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
+use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, StreamProtocol, identity};
 use libp2p_stream as stream;
 use log::{error, info, warn};
 use serde_cbor;
 use std::collections::HashSet;
-use std::env;
 use std::sync::{Arc, RwLock};
 
 use crate::protocol::VideoStreamChunk;
@@ -20,8 +18,6 @@ const STREAM_PROTOCOL: StreamProtocol = StreamProtocol::new("/stream");
 pub struct P2PSwarm {
     inbound_rx: Receiver<VideoStreamChunk>,
     outbound_tx: Sender<VideoStreamChunk>,
-    control: stream::Control,
-    peers: Arc<RwLock<HashSet<PeerId>>>,
 }
 
 #[derive(NetworkBehaviour)]
@@ -38,7 +34,7 @@ impl P2PSwarm {
         info!("Local peer id: {local_peer_id}");
 
         // Behaviour
-        let mut behaviour = StreamBehaviour {
+        let behaviour = StreamBehaviour {
             mdns: mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)?,
             stream: stream::Behaviour::new(),
         };
@@ -175,8 +171,6 @@ impl P2PSwarm {
         Ok(Self {
             inbound_rx,
             outbound_tx,
-            control,
-            peers,
         })
     }
 

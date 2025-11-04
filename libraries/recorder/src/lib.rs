@@ -13,6 +13,7 @@ pub struct ActiveCapture<'a> {
     session: Session<'a, Screencast<'a>>,
 }
 
+#[derive(Default)]
 pub struct ScreenCapture<'a> {
     active_capture: Option<ActiveCapture<'a>>,
     pipeline: Option<Pipeline>,
@@ -33,14 +34,6 @@ fn fallback_to_software_encoder() -> Result<gst::Element> {
 }
 
 impl<'a> ScreenCapture<'_> {
-    pub fn new() -> Self {
-        Self {
-            active_capture: None,
-            pipeline: None,
-            app_sink: None,
-        }
-    }
-
     async fn open_portal() -> Result<ActiveCapture<'a>> {
         let proxy = Screencast::new().await?;
         let session = proxy.create_session().await?;
@@ -130,7 +123,7 @@ impl<'a> ScreenCapture<'_> {
         app_sink.set_property("drop", true);
 
         let pipeline = gst::Pipeline::default();
-        pipeline.add_many(&[
+        pipeline.add_many([
             &pipewire_element,
             &src_queue,
             &videorate,
@@ -146,7 +139,7 @@ impl<'a> ScreenCapture<'_> {
         ])?;
 
         // Link elements
-        gst::Element::link_many(&[
+        gst::Element::link_many([
             &pipewire_element,
             &src_queue,
             &videorate,
