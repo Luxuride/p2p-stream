@@ -1,0 +1,18 @@
+[workspace]
+members = ["libraries/network", "libraries/recorder", "libraries/renderer"]
+
+[package]
+name = "p2p-stream"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.99"
+tokio = {version = "1.47.1", features = ["full"]}
+recorder = { path = "libraries/recorder" }
+renderer = { path = "libraries/renderer" }
+network = {path = "libraries/network"}
+gstreamer = "0.24.1"
+log = "0.4.28"
+env_logger = "0.11.8"
+sha2 = "0.10"

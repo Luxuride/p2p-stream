@@ -1,0 +1,14 @@
+[package]
+name = "recorder"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gst = { package = "gstreamer", version = "0.24" }
+gst-app = { package = "gstreamer-app", version = "0.24" }
+ctrlc = "3.4.5"
+ashpd = "0.12.0"
+anyhow = "1.0.99"
+tokio = "1.47.1"
+log = "0.4.28"
+gstreamer-base = "0.24.2"

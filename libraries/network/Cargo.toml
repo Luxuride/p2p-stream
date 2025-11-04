@@ -1,0 +1,16 @@
+[package]
+name = "network"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libp2p = { version = "0.56.0", features = ["quic", "mdns", "tokio", "macros", "gossipsub"] }
+anyhow = "1.0.99"
+tokio = { version = "1.47.1", features = ["full"] }
+futures = "0.3"
+log = "0.4.28"
+libp2p-stream = "0.4.0-alpha"
+async-channel = "2.5.0"
+serde = { version = "1.0.225", features = ["derive"] }
+serde_bytes = "0.11.19"
+serde_cbor = "0.11"

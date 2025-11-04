@@ -1,0 +1,10 @@
+[package]
+name = "renderer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gst = { package = "gstreamer", version = "0.24" }
+gst-app = { package = "gstreamer-app", version = "0.24" }
+anyhow = "1.0.99"
+log = "0.4.28"
