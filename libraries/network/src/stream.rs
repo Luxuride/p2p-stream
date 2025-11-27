@@ -1,5 +1,8 @@
+use crate::P2PSwarm;
+use crate::protocol::VideoStreamChunk;
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
+use async_trait::async_trait;
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use libp2p::mdns;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
@@ -10,12 +13,10 @@ use serde_cbor;
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
-use crate::protocol::VideoStreamChunk;
-
 const STREAM_PROTOCOL: StreamProtocol = StreamProtocol::new("/stream");
 
 /// Stream-based P2P networking over QUIC + mDNS.
-pub struct P2PSwarm {
+pub struct P2PStreamSwarm {
     inbound_rx: Receiver<VideoStreamChunk>,
     outbound_tx: Sender<VideoStreamChunk>,
 }
@@ -26,7 +27,7 @@ pub struct StreamBehaviour {
     stream: stream::Behaviour,
 }
 
-impl P2PSwarm {
+impl P2PStreamSwarm {
     pub async fn run(_topic: &str) -> Result<Self> {
         // Identity
         let local_key = identity::Keypair::generate_ed25519();
@@ -173,14 +174,15 @@ impl P2PSwarm {
             outbound_tx,
         })
     }
+}
 
-    /// Access the receiver for inbound chunks.
-    pub fn inbound_rx(&self) -> &Receiver<VideoStreamChunk> {
+#[async_trait]
+impl P2PSwarm for P2PStreamSwarm {
+    fn inbound_rx(&self) -> &Receiver<VideoStreamChunk> {
         &self.inbound_rx
     }
 
-    /// Queue a chunk to be sent to all connected peers.
-    pub async fn send_message(&mut self, chunk: VideoStreamChunk) {
+    async fn send_message(&mut self, chunk: VideoStreamChunk) {
         let _ = self.outbound_tx.send(chunk).await;
     }
 }

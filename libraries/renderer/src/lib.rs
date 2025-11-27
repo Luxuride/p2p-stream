@@ -40,6 +40,7 @@ impl GstRenderer {
                     e
                 )
             })?;
+        let post_proc = gst::ElementFactory::make("vaapipostproc").build()?;
         let convert = gst::ElementFactory::make("videoconvert").build()?;
         let dec_queue = gst::ElementFactory::make("queue").build()?;
         let sink = gst::ElementFactory::make("autovideosink")
@@ -55,6 +56,7 @@ impl GstRenderer {
             &demux,
             &parse,
             &decoder,
+            &post_proc,
             &convert,
             &dec_queue,
             &sink,
@@ -64,7 +66,7 @@ impl GstRenderer {
         gst::Element::link_many([appsrc.upcast_ref(), &buffer, &depay, &demux])?;
 
         // Link the rest of the chain (parse -> sink) statically
-        gst::Element::link_many([&parse, &decoder, &convert, &dec_queue, &sink])?;
+        gst::Element::link_many([&parse, &decoder, &post_proc, &convert, &dec_queue, &sink])?;
 
         // Dynamically link tsdemux to h264parse when the correct pad appears
         let parse_weak = parse.downgrade();

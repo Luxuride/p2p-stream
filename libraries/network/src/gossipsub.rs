@@ -1,5 +1,8 @@
+use crate::P2PSwarm;
+use crate::protocol::VideoStreamChunk;
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
+use async_trait::async_trait;
 use futures::StreamExt;
 use libp2p::gossipsub::{self, Event as GossipsubEvent, IdentTopic, MessageAuthenticity};
 use libp2p::mdns;
@@ -9,8 +12,6 @@ use log::{info, warn};
 use std::collections::HashSet;
 use std::env;
 use std::sync::{Arc, RwLock};
-
-use crate::protocol::VideoStreamChunk;
 
 /// Resolve channel capacity from ENV.
 /// Uses VIDEO_STREAM_CHUNKS if set; defaults to 128.
@@ -25,8 +26,6 @@ fn channel_capacity_from_env() -> usize {
 pub struct GossipP2P {
     inbound_rx: Receiver<VideoStreamChunk>,
     outbound_tx: Sender<VideoStreamChunk>,
-    peers: Arc<RwLock<HashSet<PeerId>>>,
-    topic: IdentTopic,
 }
 
 #[derive(NetworkBehaviour)]
@@ -185,28 +184,17 @@ impl GossipP2P {
         Ok(Self {
             inbound_rx,
             outbound_tx,
-            peers,
-            topic,
         })
     }
+}
 
-    /// Access the receiver for inbound chunks.
-    pub fn inbound_rx(&self) -> &Receiver<VideoStreamChunk> {
+#[async_trait]
+impl P2PSwarm for GossipP2P {
+    fn inbound_rx(&self) -> &Receiver<VideoStreamChunk> {
         &self.inbound_rx
     }
 
-    /// Queue a chunk to be published to the gossipsub topic.
-    pub async fn send_message(&mut self, chunk: VideoStreamChunk) {
+    async fn send_message(&mut self, chunk: VideoStreamChunk) {
         let _ = self.outbound_tx.send(chunk).await;
-    }
-
-    /// Access the current set of known peers.
-    pub fn peers(&self) -> Arc<RwLock<HashSet<PeerId>>> {
-        self.peers.clone()
-    }
-
-    /// Return the subscribed topic.
-    pub fn topic(&self) -> IdentTopic {
-        self.topic.clone()
     }
 }

@@ -14,3 +14,5 @@ async-channel = "2.5.0"
 serde = { version = "1.0.225", features = ["derive"] }
 serde_bytes = "0.11.19"
 serde_cbor = "0.11"
+sha2 = "0.10"
+async-trait = "0.1.89"

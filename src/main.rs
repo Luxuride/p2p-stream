@@ -1,12 +1,11 @@
 use anyhow::Result;
 use log::{error, trace};
-use network::stream::P2PSwarm;
-use recorder::ScreenCapture;
+use network::protocol::VideoStreamChunk;
+use network::P2PSwarm;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-
-use network::protocol::VideoStreamChunk;
+use video_reader::VideoReader;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -14,7 +13,9 @@ async fn main() -> Result<()> {
     env_logger::init();
 
     let renderer = renderer::GstRenderer::new()?;
-    let p2p_swarm = Arc::new(Mutex::new(P2PSwarm::run("test").await?));
+    let p2p_swarm = Arc::new(Mutex::new(
+        network::stream::P2PStreamSwarm::run("test").await?,
+    ));
     {
         let p2p_swarm_clone = p2p_swarm.clone();
         tokio::spawn(async move {
@@ -40,14 +41,20 @@ async fn main() -> Result<()> {
     {
         let p2p_swarm = p2p_swarm.clone();
         tokio::spawn(async move {
+            let mut index = 0;
             while let Some(chunk) = video_rx.recv().await {
-                let vsc = VideoStreamChunk { chunk };
+                let vsc = VideoStreamChunk {
+                    chunk,
+                    timestamp: std::time::UNIX_EPOCH.elapsed().unwrap().as_millis(),
+                    index,
+                };
+                index = index.checked_add(1).unwrap();
                 p2p_swarm.lock().await.send_message(vsc).await;
             }
         });
     }
 
-    let mut screen_capture = ScreenCapture::default();
+    let mut screen_capture = VideoReader::default();
     trace!("Starting screen capture...");
     screen_capture.start().await?;
     trace!("Setting up callback...");

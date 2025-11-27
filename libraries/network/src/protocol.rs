@@ -4,4 +4,6 @@ use serde::{Deserialize, Serialize};
 pub struct VideoStreamChunk {
     #[serde(with = "serde_bytes")]
     pub chunk: Vec<u8>,
+    pub timestamp: u128,
+    pub index: u64,
 }

@@ -1,5 +1,5 @@
 [workspace]
-members = ["libraries/network", "libraries/recorder", "libraries/renderer"]
+members = ["libraries/network", "libraries/recorder", "libraries/renderer", "libraries/video-reader", "stream_test"]
 
 [package]
 name = "p2p-stream"
@@ -9,6 +9,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.99"
 tokio = {version = "1.47.1", features = ["full"]}
+video-reader = { path = "libraries/video-reader" }
 recorder = { path = "libraries/recorder" }
 renderer = { path = "libraries/renderer" }
 network = {path = "libraries/network"}
