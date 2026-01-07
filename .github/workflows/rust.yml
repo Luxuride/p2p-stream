@@ -1,0 +1,113 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain (rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Cargo fmt check
+        run: cargo fmt --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Install Rust toolchain (clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy
+      - name: Clippy check
+        run: cargo clippy -- -D warnings
+
+  build-linux:
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Build project (Linux)
+        run: cargo build --release
+      - name: Upload Linux Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendering-linux-binary
+          path: target/release/p2p-stream
+
+  build-windows:
+    runs-on: windows-latest
+    needs: [fmt, clippy]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Build project (Windows)
+        run: cargo build --release
+      - name: Upload Windows Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendering-windows-binary
+          path: target/release/p2p-stream.exe
+
+  build-macos:
+    runs-on: macos-latest
+    needs: [fmt, clippy]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Build project (macOS)
+        run: cargo build --release
+      - name: Upload macOS Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendering-macos-binary
+          path: target/release/p2p-stream
+
+  build-appimage:
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rendering-linux-binary
+      - name: Build and package AppImage
+        uses: AppImageCrafters/build-appimage@master
+        with:
+          recipe: "./.github/appimage/AppImageBuilder.yml"
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2p-stream-linux-appimage
+          path: "*.AppImage"

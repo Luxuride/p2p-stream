@@ -1,0 +1,18 @@
+version: 1
+script:
+  - chmod +x p2p-stream
+  - mkdir -p AppDir/usr/bin
+  - mv p2p-stream AppDir/usr/bin
+  - mkdir -p AppDir/usr/share/icons
+  - which mksquashfs || apt install squashfs-tools
+AppDir:
+  path: ./AppDir
+  app_info:
+    id: eu.luxuride.p2p-stream
+    name: p2p-stream
+    version: 0.1.0
+    exec: usr/bin/p2p-stream
+    exec_args: $@
+
+AppImage:
+  arch: x86_64
