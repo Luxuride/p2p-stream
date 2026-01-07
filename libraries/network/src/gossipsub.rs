@@ -5,7 +5,7 @@ use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use futures::StreamExt;
 use libp2p::gossipsub::{
-    self, Behaviour, Event as GossipsubEvent, IdentTopic, MessageAcceptance, MessageAuthenticity,
+    self, Event as GossipsubEvent, IdentTopic, MessageAcceptance, MessageAuthenticity,
     MessageId,
 };
 use libp2p::mdns;
@@ -14,7 +14,7 @@ use libp2p::{Multiaddr, PeerId, identity};
 use log::{info, warn};
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 /// Gossipsub-based P2P networking over QUIC + mDNS.
 static TTL: Duration = Duration::from_secs(5);
@@ -113,7 +113,7 @@ impl GossipP2P {
                                                         let _ = chunk_verdict_tx.send((message_id, propagation_source, MessageAcceptance::Reject)).await;
                                                         return;
                                                     }
-                                                    let _ = chunk_verdict_tx.send((message_id, propagation_source, MessageAcceptance::Accept));
+                                                    let _ = chunk_verdict_tx.send((message_id, propagation_source, MessageAcceptance::Accept)).await;
                                                     let _ = inbound_tx.send(chunk).await;
                                             }
                                             Err(e) => {

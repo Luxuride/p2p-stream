@@ -325,7 +325,7 @@ impl HybridP2P {
                                             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
                                             let counter = id_counter.fetch_add(1, Ordering::SeqCst);
                                             // use local_peer_id.to_bytes() so PeerId isn't directly serialized
-                                            let id = match serde_cbor::to_vec(&(local_peer_id.clone().to_bytes(), now, counter)) {
+                                            let id = match serde_cbor::to_vec(&(local_peer_id.to_bytes(), now, counter)) {
                                                 Ok(v) => v,
                                                 Err(e) => {
                                                     warn!("Failed to generate chunk id: {e:?}");

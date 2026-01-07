@@ -49,7 +49,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<()> {git
     gstreamer::init()?;
     env_logger::init();
     let args = Args::parse();

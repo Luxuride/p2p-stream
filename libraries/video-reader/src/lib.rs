@@ -1,6 +1,6 @@
 use anyhow::Result;
 use gst::Pipeline;
-use gst::prelude::{Cast, ElementExt, ElementExtManual, GstBinExtManual, ObjectExt, PadExt};
+use gst::prelude::{Cast, ElementExt, GstBinExtManual, ObjectExt, PadExt};
 use gst_app::AppSink;
 use log::{trace, warn};
 

@@ -1,6 +1,5 @@
 use anyhow::Result;
-use gst::glib::clone::Downgrade;
-use gst::prelude::{Cast, ElementExt, GstBinExtManual, PadExt};
+use gst::prelude::{Cast, ElementExt, GstBinExtManual};
 use gst_app::AppSrc;
 use log::{error, info};
 
