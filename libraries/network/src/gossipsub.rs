@@ -5,8 +5,7 @@ use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use futures::StreamExt;
 use libp2p::gossipsub::{
-    self, Event as GossipsubEvent, IdentTopic, MessageAcceptance, MessageAuthenticity,
-    MessageId,
+    self, Event as GossipsubEvent, IdentTopic, MessageAcceptance, MessageAuthenticity, MessageId,
 };
 use libp2p::mdns;
 use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
