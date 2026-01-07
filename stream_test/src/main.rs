@@ -85,7 +85,6 @@ async fn main() -> Result<()> {
                     ]).await;
                 }
             }
-
         }
         Role::Analyzer => {
             println!("Starting Analyzer");

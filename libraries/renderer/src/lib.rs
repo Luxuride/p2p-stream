@@ -61,7 +61,17 @@ impl GstRenderer {
         ])?;
 
         // Link the rest of the chain (parse -> sink) statically
-        gst::Element::link_many([appsrc.upcast_ref(), &buffer, &depay, &parse, &decoder, &post_proc, &convert, &dec_queue, &sink])?;
+        gst::Element::link_many([
+            appsrc.upcast_ref(),
+            &buffer,
+            &depay,
+            &parse,
+            &decoder,
+            &post_proc,
+            &convert,
+            &dec_queue,
+            &sink,
+        ])?;
 
         pipeline.set_state(gst::State::Playing)?;
 

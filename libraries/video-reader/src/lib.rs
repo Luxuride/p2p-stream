@@ -169,7 +169,8 @@ impl VideoReader {
             )
         })
         .await
-        .map_err(|e| anyhow!("Failed to join blocking task: {:?}", e))?.unwrap();
+        .map_err(|e| anyhow!("Failed to join blocking task: {:?}", e))?
+        .unwrap();
 
         match msg_opt.view() {
             MessageView::Eos(_) => Ok(()),

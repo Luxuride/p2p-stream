@@ -4,7 +4,10 @@ use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use futures::StreamExt;
-use libp2p::gossipsub::{self, Behaviour, Event as GossipsubEvent, IdentTopic, MessageAcceptance, MessageAuthenticity, MessageId};
+use libp2p::gossipsub::{
+    self, Behaviour, Event as GossipsubEvent, IdentTopic, MessageAcceptance, MessageAuthenticity,
+    MessageId,
+};
 use libp2p::mdns;
 use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, identity};
@@ -73,7 +76,8 @@ impl GossipP2P {
 
         let (inbound_tx, inbound_rx) = async_channel::unbounded::<VideoStreamChunk>();
         let (outbound_tx, outbound_rx) = async_channel::unbounded::<VideoStreamChunk>();
-        let (chunk_verdict_tx, chunk_verdict_rx) = async_channel::unbounded::<(MessageId, PeerId, MessageAcceptance)>();
+        let (chunk_verdict_tx, chunk_verdict_rx) =
+            async_channel::unbounded::<(MessageId, PeerId, MessageAcceptance)>();
         // Shared set of connected peers for bookkeeping
         let peers: Arc<RwLock<HashSet<PeerId>>> = Arc::new(RwLock::new(HashSet::new()));
 

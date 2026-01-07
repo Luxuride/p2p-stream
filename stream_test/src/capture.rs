@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use video_reader::VideoReader;
 
 pub struct Capture {
-    pub video_reader: VideoReader
+    pub video_reader: VideoReader,
 }
 impl Capture {
     pub async fn new(swarm: Arc<Mutex<dyn P2PSwarm>>) -> Result<Self> {
@@ -47,8 +47,6 @@ impl Capture {
             }
             Ok(gstreamer::FlowSuccess::Ok)
         });
-        Ok(Self {
-            video_reader
-        })
+        Ok(Self { video_reader })
     }
 }
