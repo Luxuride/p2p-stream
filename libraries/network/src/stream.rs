@@ -77,14 +77,17 @@ impl P2PStreamSwarm {
                                 warn!("Failed reading incoming stream: {e:?}");
                                 continue;
                             }
-                            match serde_cbor::from_slice::<VideoStreamChunk>(&data) {
-                                Ok(stream_chunk) => {
-                                    let _ = inbound_tx.send(stream_chunk).await;
+                            let inbound_tx = inbound_tx.clone();
+                            tokio::spawn(async move {
+                                match serde_cbor::from_slice::<VideoStreamChunk>(&data) {
+                                    Ok(stream_chunk) => {
+                                        let _ = inbound_tx.send(stream_chunk).await;
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to decode inbound chunk: {e:?}");
+                                    }
                                 }
-                                Err(e) => {
-                                    warn!("Failed to decode inbound chunk: {e:?}");
-                                }
-                            }
+                            });
                         }
                     }
                     Err(e) => {
@@ -150,7 +153,7 @@ impl P2PStreamSwarm {
                     };
 
                     for pid in targets {
-                        println!("Sending to {pid}");
+                        log::trace!("Sending to {pid}");
                         match control_for_send.open_stream(pid, STREAM_PROTOCOL).await {
                             Ok(mut st) => {
                                 if let Err(e) = st.write_all(&payload).await {

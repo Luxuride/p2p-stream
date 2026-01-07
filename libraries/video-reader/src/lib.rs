@@ -3,7 +3,6 @@ use gst::Pipeline;
 use gst::prelude::{Cast, ElementExt, ElementExtManual, GstBinExtManual, ObjectExt, PadExt};
 use gst_app::AppSink;
 use log::{trace, warn};
-use std::os::fd::{AsRawFd, OwnedFd};
 
 #[derive(Default)]
 pub struct VideoReader {
@@ -40,7 +39,7 @@ impl VideoReader {
         // Try hardware acceleration first, fall back to software encoding
         let encoder = if let Ok(vaapi_enc) = gst::ElementFactory::make("vaapih264enc")
             .property("quality-level", 6u32)
-            .property("bitrate", 1000u32)
+            .property("bitrate", 500u32)
             .property("keyframe-period", 0u32)
             .build()
         {
@@ -51,14 +50,12 @@ impl VideoReader {
         let end_parse = gst::ElementFactory::make("h264parse")
             .property("config-interval", 1i32)
             .build()?;
-        let mux = gst::ElementFactory::make("mpegtsmux")
-            .property("alignment", 7i32)
-            .build()?;
-        let pay = gst::ElementFactory::make("rtpmp2tpay")
-            .property("pt", 33u32)
+        let payload_queue = gst::ElementFactory::make("queue").build()?;
+        let pay = gst::ElementFactory::make("rtph264pay")
+            .property("mtu", 2u32.pow(12))
+            .property("pt", 96u32)
             .build()?;
 
-        let payload_queue = gst::ElementFactory::make("queue").build()?;
         // Create AppSink for RTP H.264 stream
         let app_sink = AppSink::builder().build();
 
@@ -76,16 +73,15 @@ impl VideoReader {
             &time_overlay,
             &encoder,
             &end_parse,
-            &mux,
-            &pay,
             &payload_queue,
+            &pay,
             app_sink.upcast_ref(),
         ])?;
 
         // Link elements
         gst::Element::link_many([&file_src, &demux])?;
         let start_parse_clone = start_parse.clone();
-        demux.connect_pad_added(move |demux, src_pad| {
+        demux.connect_pad_added(move |_demux, src_pad| {
             let sink_pad = start_parse_clone
                 .static_pad("sink")
                 .expect("No sink pad on parse");
@@ -94,8 +90,7 @@ impl VideoReader {
                 return;
             }
 
-            let rt = src_pad.link(&sink_pad);
-            println!("pad link result: {:?}", rt);
+            let _ = src_pad.link(&sink_pad).ok();
         });
         gst::Element::link_many([
             &start_parse,
@@ -103,9 +98,8 @@ impl VideoReader {
             &time_overlay,
             &encoder,
             &end_parse,
-            &mux,
-            &pay,
             &payload_queue,
+            &pay,
             app_sink.upcast_ref(),
         ])?;
 
@@ -143,10 +137,48 @@ impl VideoReader {
 
     pub async fn stop(&mut self) -> Result<()> {
         if let Some(pipeline) = self.pipeline.take() {
-            pipeline.send_event(gst::event::Eos::new());
             let _ = pipeline.set_state(gst::State::Null);
         }
         self.app_sink = None;
         Ok(())
+    }
+
+    pub async fn wait_for_eos(&self) -> Result<()> {
+        use anyhow::anyhow;
+        use gst::MessageView;
+
+        // If there's no pipeline, nothing to wait for.
+        let pipeline = match &self.pipeline {
+            Some(p) => p.clone(),
+            None => return Ok(()),
+        };
+
+        let bus = pipeline
+            .bus()
+            .ok_or(anyhow!("Pipeline has no bus to wait on"))?;
+
+        // Clone the bus for moving into the blocking task.
+        let bus_cloned = bus.clone();
+
+        // Block in a dedicated thread until EOS or ERROR arrives.
+        let msg_opt = tokio::task::spawn_blocking(move || {
+            // Wait forever for EOS or ERROR
+            bus_cloned.timed_pop_filtered(
+                gst::ClockTime::NONE,
+                &[gst::MessageType::Eos, gst::MessageType::Error],
+            )
+        })
+        .await
+        .map_err(|e| anyhow!("Failed to join blocking task: {:?}", e))?.unwrap();
+
+        match msg_opt.view() {
+            MessageView::Eos(_) => Ok(()),
+            MessageView::Error(err) => Err(anyhow!(
+                "Pipeline error: {} ({:?})",
+                err.error(),
+                err.debug()
+            )),
+            _ => Ok(()),
+        }
     }
 }

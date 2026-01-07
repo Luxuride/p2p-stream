@@ -16,3 +16,4 @@ csv = "1.4.0"
 serde = { version = "1.0.225", features = ["derive"] }
 clap = { version = "4.5.49", features = ["derive"]}
 futures-util = "0.3.31"
+libc = "1.0.0-alpha.1"

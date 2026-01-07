@@ -4,25 +4,18 @@ use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use futures::StreamExt;
-use libp2p::gossipsub::{self, Event as GossipsubEvent, IdentTopic, MessageAuthenticity};
+use libp2p::gossipsub::{self, Behaviour, Event as GossipsubEvent, IdentTopic, MessageAcceptance, MessageAuthenticity, MessageId};
 use libp2p::mdns;
 use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use libp2p::{Multiaddr, PeerId, identity};
 use log::{info, warn};
 use std::collections::HashSet;
-use std::env;
 use std::sync::{Arc, RwLock};
-
-/// Resolve channel capacity from ENV.
-/// Uses VIDEO_STREAM_CHUNKS if set; defaults to 128.
-fn channel_capacity_from_env() -> usize {
-    env::var("VIDEO_STREAM_CHUNKS")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(128)
-}
+use std::time::{Duration, Instant, SystemTime};
 
 /// Gossipsub-based P2P networking over QUIC + mDNS.
+static TTL: Duration = Duration::from_secs(5);
+
 pub struct GossipP2P {
     inbound_rx: Receiver<VideoStreamChunk>,
     outbound_tx: Sender<VideoStreamChunk>,
@@ -45,9 +38,9 @@ impl GossipP2P {
         // Configure gossipsub
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .validation_mode(gossipsub::ValidationMode::Strict)
+            .validate_messages()
             .build()
             .expect("valid gossipsub config");
-
         let mut gs = gossipsub::Behaviour::new(
             MessageAuthenticity::Signed(local_key.clone()),
             gossipsub_config,
@@ -78,11 +71,9 @@ impl GossipP2P {
             .expect("valid listen addr");
         swarm.listen_on(addr)?;
 
-        // Channels for inbound/outbound chunks (bounded; capacity from ENV)
-        let cap = channel_capacity_from_env();
-        let (inbound_tx, inbound_rx) = async_channel::bounded::<VideoStreamChunk>(cap);
-        let (outbound_tx, outbound_rx) = async_channel::bounded::<VideoStreamChunk>(cap);
-
+        let (inbound_tx, inbound_rx) = async_channel::unbounded::<VideoStreamChunk>();
+        let (outbound_tx, outbound_rx) = async_channel::unbounded::<VideoStreamChunk>();
+        let (chunk_verdict_tx, chunk_verdict_rx) = async_channel::unbounded::<(MessageId, PeerId, MessageAcceptance)>();
         // Shared set of connected peers for bookkeeping
         let peers: Arc<RwLock<HashSet<PeerId>>> = Arc::new(RwLock::new(HashSet::new()));
 
@@ -96,26 +87,37 @@ impl GossipP2P {
 
                 loop {
                     tokio::select! {
-                        // Drive swarm events
+                        Ok((message_id, peer_id, message_acceptance)) = chunk_verdict_rx.recv() => {
+                          swarm.behaviour_mut().gossipsub.report_message_validation_result(&message_id, &peer_id, message_acceptance);
+                        },
                         maybe_event = swarm.next() => {
                             match maybe_event {
                                 Some(SwarmEvent::Behaviour(GossipBehaviourEvent::Gossipsub(
                                     GossipsubEvent::Message {
                                         propagation_source,
-                                        message_id: _,
+                                        message_id,
                                         message,
                                     },
                                 ))) => {
-                                    // Track who we heard from and forward payload
-                                    peers_inner.write().unwrap().insert(propagation_source);
-                                    match serde_cbor::from_slice::<VideoStreamChunk>(&message.data) {
-                                        Ok(chunk) => {
-                                            let _ = inbound_tx.send(chunk).await;
+                                    let inbound_tx = inbound_tx.clone();
+                                    let chunk_verdict_tx = chunk_verdict_tx.clone();
+                                    tokio::spawn(async move {
+                                        match serde_cbor::from_slice::<VideoStreamChunk>(&message.data) {
+                                            Ok(chunk) => {
+                                                    let age =  SystemTime::now().duration_since(chunk.timestamp).unwrap();
+                                                    if age > TTL {
+                                                        let _ = chunk_verdict_tx.send((message_id, propagation_source, MessageAcceptance::Reject)).await;
+                                                        return;
+                                                    }
+                                                    let _ = chunk_verdict_tx.send((message_id, propagation_source, MessageAcceptance::Accept));
+                                                    let _ = inbound_tx.send(chunk).await;
+                                            }
+                                            Err(e) => {
+                                                let _ = chunk_verdict_tx.send((message_id, propagation_source, MessageAcceptance::Reject)).await;
+                                                warn!("Failed to decode inbound chunk: {e:?}");
+                                            }
                                         }
-                                        Err(e) => {
-                                            warn!("Failed to decode inbound chunk: {e:?}");
-                                        }
-                                    }
+                                    });
                                 }
                                 Some(SwarmEvent::Behaviour(GossipBehaviourEvent::Mdns(
                                     mdns::Event::Discovered(list),
@@ -147,13 +149,11 @@ impl GossipP2P {
                                     peers_inner.write().unwrap().remove(&peer_id);
                                 }
                                 Some(_other) => {
-                                    // Ignore other events
                                 }
                                 None => break,
                             }
                         }
 
-                        // Publish outbound messages
                         msg = outbound_rx.recv() => {
                             match msg {
                                 Ok(chunk) => {

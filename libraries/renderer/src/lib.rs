@@ -13,8 +13,8 @@ impl GstRenderer {
     pub fn new() -> Result<Self> {
         let caps = gst::Caps::builder("application/x-rtp")
             .field("media", "video")
-            .field("payload", 33i32)
-            .field("encoding-name", "MP2T")
+            .field("payload", 96i32)
+            .field("encoding-name", "H264")
             .field("clock-rate", 90000i32)
             .build();
         let appsrc = AppSrc::builder()
@@ -24,10 +24,9 @@ impl GstRenderer {
             .format(gst::Format::Time)
             .build();
         let buffer = gst::ElementFactory::make("rtpjitterbuffer")
-            .property("latency", 2000u32)
+            .property("latency", 5000u32)
             .build()?;
-        let depay = gst::ElementFactory::make("rtpmp2tdepay").build()?;
-        let demux = gst::ElementFactory::make("tsdemux").build()?;
+        let depay = gst::ElementFactory::make("rtph264depay").build()?;
         let parse = gst::ElementFactory::make("h264parse").build()?;
         let decoder = gst::ElementFactory::make("vaapih264dec")
             .property("low-latency", true)
@@ -53,7 +52,6 @@ impl GstRenderer {
             appsrc.upcast_ref(),
             &buffer,
             &depay,
-            &demux,
             &parse,
             &decoder,
             &post_proc,
@@ -62,38 +60,8 @@ impl GstRenderer {
             &sink,
         ])?;
 
-        // Link up to the demux statically
-        gst::Element::link_many([appsrc.upcast_ref(), &buffer, &depay, &demux])?;
-
         // Link the rest of the chain (parse -> sink) statically
-        gst::Element::link_many([&parse, &decoder, &post_proc, &convert, &dec_queue, &sink])?;
-
-        // Dynamically link tsdemux to h264parse when the correct pad appears
-        let parse_weak = parse.downgrade();
-        demux.connect_pad_added(move |_demux, src_pad| {
-            let Some(parse) = parse_weak.upgrade() else {
-                return;
-            };
-
-            // Only accept H.264 video pads
-            if let Some(caps) = src_pad.current_caps()
-                && let Some(structure) = caps.structure(0)
-            {
-                let name = structure.name().as_str();
-                if name != "video/x-h264" {
-                    return; // Ignore non-H264 streams
-                }
-            }
-
-            if let Some(sink_pad) = parse.static_pad("sink") {
-                if sink_pad.is_linked() {
-                    return;
-                }
-                if let Err(e) = src_pad.link(&sink_pad) {
-                    error!("Failed to link tsdemux to h264parse: {:?}", e);
-                }
-            }
-        });
+        gst::Element::link_many([appsrc.upcast_ref(), &buffer, &depay, &parse, &decoder, &post_proc, &convert, &dec_queue, &sink])?;
 
         pipeline.set_state(gst::State::Playing)?;
 

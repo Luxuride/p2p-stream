@@ -1,14 +1,15 @@
-use crate::Protocol;
 use anyhow::Result;
 use log::{error, trace};
 use network::P2PSwarm;
 use network::protocol::VideoStreamChunk;
-use renderer::GstRenderer;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::Mutex;
 use video_reader::VideoReader;
 
-pub struct Capture {}
+pub struct Capture {
+    pub video_reader: VideoReader
+}
 impl Capture {
     pub async fn new(swarm: Arc<Mutex<dyn P2PSwarm>>) -> Result<Self> {
         let (video_tx, mut video_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
@@ -21,7 +22,7 @@ impl Capture {
                 while let Some(chunk) = video_rx.recv().await {
                     let vsc = VideoStreamChunk {
                         chunk,
-                        timestamp: std::time::UNIX_EPOCH.elapsed().unwrap().as_millis(),
+                        timestamp: SystemTime::now(),
                         index,
                     };
                     index = index.checked_add(1).unwrap();
@@ -30,11 +31,11 @@ impl Capture {
             });
         }
 
-        let mut screen_capture = VideoReader::default();
+        let mut video_reader = VideoReader::default();
         trace!("Starting screen capture...");
-        screen_capture.start().await?;
+        video_reader.start().await?;
         trace!("Setting up callback...");
-        screen_capture.set_new_sample_callback(move |app_sink| {
+        video_reader.set_new_sample_callback(move |app_sink| {
             if let Ok(sample) = app_sink.pull_sample() {
                 if let Some(map) = sample.buffer().and_then(|b| b.map_readable().ok()) {
                     trace!("Pushing {} bytes", map.len());
@@ -46,6 +47,8 @@ impl Capture {
             }
             Ok(gstreamer::FlowSuccess::Ok)
         });
-        Ok(Self {})
+        Ok(Self {
+            video_reader
+        })
     }
 }

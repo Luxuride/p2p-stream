@@ -3,7 +3,7 @@ use log::{error, trace};
 use network::protocol::VideoStreamChunk;
 use network::P2PSwarm;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::sync::Mutex;
 use video_reader::VideoReader;
 
@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
             while let Some(chunk) = video_rx.recv().await {
                 let vsc = VideoStreamChunk {
                     chunk,
-                    timestamp: std::time::UNIX_EPOCH.elapsed().unwrap().as_millis(),
+                    timestamp: SystemTime::now(),
                     index,
                 };
                 index = index.checked_add(1).unwrap();
