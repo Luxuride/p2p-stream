@@ -1,5 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=P2P Stream
-Exec=p2p-stream
+Name=Stream Test
+Exec=stream_test
+Icon=icon
 Terminal=false

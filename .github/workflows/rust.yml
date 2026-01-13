@@ -60,50 +60,14 @@ jobs:
         with:
           toolchain: stable
       - name: Build project (Linux)
-        run: cargo build --release
+        run: |
+          cargo build --release
+          cargo build --package stream_test --release
       - name: Upload Linux Binary
         uses: actions/upload-artifact@v4
         with:
-          name: rendering-linux-binary
-          path: target/release/p2p-stream
-
-  build-windows:
-    runs-on: windows-latest
-    needs: [fmt, clippy]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-      - name: Build project (Windows)
-        run: cargo build --release
-      - name: Upload Windows Binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: rendering-windows-binary
-          path: target/release/p2p-stream.exe
-
-  build-macos:
-    runs-on: macos-latest
-    needs: [fmt, clippy]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-      - name: Build project (macOS)
-        run: cargo build --release
-      - name: Upload macOS Binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: rendering-macos-binary
-          path: target/release/p2p-stream
+          name: p2p-stream-linux
+          path: target/release/stream_test
 
   build-appimage:
     runs-on: ubuntu-latest
