@@ -6,6 +6,7 @@ use crate::analyze::Analyze;
 use crate::capture::Capture;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
+use log::error;
 use std::env;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -55,7 +56,12 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     match args.role {
         Role::Manager => {
-            let exe = env::current_exe()?;
+            let exe = match env::current_exe() {
+                Ok(exe) => exe,
+                Err(error) => {
+                    panic!("Failed to get exe: {}", error);
+                }
+            };
             let mut client_child = Command::new(&exe)
                 .arg("--protocol")
                 .arg(&args.protocol.to_string())
