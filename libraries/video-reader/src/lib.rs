@@ -28,7 +28,7 @@ impl VideoReader {
         let file_src = gst::ElementFactory::make("filesrc")
             .property(
                 "location",
-                "/home/lux/Documents/Rust/p2p-stream/big_buck_bunny_1080p_h264.mov",
+                std::env::var("VIDEO_SOURCE").expect("VIDEO_SOURCE env var not set"),
             )
             .build()?;
         let demux = gst::ElementFactory::make("qtdemux").build()?;
