@@ -4,8 +4,9 @@ script:
   - mkdir -p AppDir/usr/bin
   - mv artifacts/stream_test AppDir/usr/bin
   - mkdir -p AppDir/usr/share/icons
-  - which mksquashfs || apt install squashfs-tools
+  - which mksquashfs || apt-get install -y squashfs-tools
   - touch AppDir/usr/share/icons/icon.svg
+
 AppDir:
   path: ./AppDir
   app_info:
@@ -15,6 +16,24 @@ AppDir:
     exec: usr/bin/stream_test
     exec_args: $@
     icon: icon
+
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
+    include:
+      - libgstreamer1.0-0
+      - gstreamer1.0-plugins-base
+      - gstreamer1.0-plugins-good
+      - gstreamer1.0-plugins-bad
+      - gstreamer1.0-libav
+    exclude: []
+
+  runtime:
+    env:
+      GST_PLUGIN_SYSTEM_PATH_1_0: '${APPDIR}/usr/lib/x86_64-linux-gnu/gstreamer-1.0'
+      GST_PLUGIN_SCANNER: '${APPDIR}/usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner'
 
 AppImage:
   arch: x86_64
