@@ -1,5 +1,5 @@
 use anyhow::Result;
-use gst::prelude::{Cast, ElementExt, GstBinExtManual};
+use gst::prelude::{Cast, ElementExt, ElementExtManual, GstBinExt, GstBinExtManual};
 use gst_app::AppSrc;
 use log::{error, info};
 
@@ -38,7 +38,10 @@ impl GstRenderer {
                     e
                 )
             })?;
-        let post_proc = gst::ElementFactory::make("vaapipostproc").build()?;
+        let post_proc = gst::ElementFactory::make("vaapipostproc").build().ok();
+        if post_proc.is_none() {
+            info!("vaapipostproc not available, skipping VA-API post-processing");
+        }
         let convert = gst::ElementFactory::make("videoconvert").build()?;
         let dec_queue = gst::ElementFactory::make("queue").build()?;
         let sink = gst::ElementFactory::make("autovideosink")
@@ -47,30 +50,22 @@ impl GstRenderer {
 
         // Pipeline
         let pipeline = gst::Pipeline::new();
-        pipeline.add_many([
-            appsrc.upcast_ref(),
-            &buffer,
-            &depay,
-            &parse,
-            &decoder,
-            &post_proc,
-            &convert,
-            &dec_queue,
-            &sink,
-        ])?;
+        pipeline.add_many([appsrc.upcast_ref(), &buffer, &depay, &parse, &decoder])?;
+        if let Some(pp) = &post_proc {
+            pipeline.add(pp)?;
+        }
+        pipeline.add_many([&convert, &dec_queue, &sink])?;
 
-        // Link the rest of the chain (parse -> sink) statically
-        gst::Element::link_many([
-            appsrc.upcast_ref(),
-            &buffer,
-            &depay,
-            &parse,
-            &decoder,
-            &post_proc,
-            &convert,
-            &dec_queue,
-            &sink,
-        ])?;
+        // Link the chain up to the decoder
+        gst::Element::link_many([appsrc.upcast_ref(), &buffer, &depay, &parse, &decoder])?;
+        // Optionally link vaapipostproc, then the rest
+        let after_decoder: &gst::Element = if let Some(pp) = &post_proc {
+            decoder.link(pp)?;
+            pp
+        } else {
+            &decoder
+        };
+        gst::Element::link_many([after_decoder, &convert, &dec_queue, &sink])?;
 
         pipeline.set_state(gst::State::Playing)?;
 

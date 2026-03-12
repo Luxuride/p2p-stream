@@ -10,6 +10,14 @@ pub struct VideoReader {
     app_sink: Option<AppSink>,
 }
 
+// Helper function to create a software decoder when hardware acceleration fails
+fn fallback_to_software_decoder() -> Result<gst::Element> {
+    warn!("Falling back to software H.264 decoder (avdec_h264)");
+    gst::ElementFactory::make("avdec_h264")
+        .build()
+        .map_err(|e| anyhow::anyhow!("Failed to create software H.264 decoder: {:?}", e))
+}
+
 // Helper function to create a software encoder when hardware acceleration fails
 fn fallback_to_software_encoder() -> Result<gst::Element> {
     warn!("Falling back to software x264 encoder");
@@ -33,7 +41,15 @@ impl VideoReader {
             .build()?;
         let demux = gst::ElementFactory::make("qtdemux").build()?;
         let start_parse = gst::ElementFactory::make("h264parse").build()?;
-        let dec = gst::ElementFactory::make("vaapih264dec").build()?;
+
+        // Try hardware acceleration first, fall back to software decoding
+        let dec = if let Ok(vaapi_dec) = gst::ElementFactory::make("vaapih264dec").build() {
+            trace!("Using VA-API H.264 decoder");
+            vaapi_dec
+        } else {
+            fallback_to_software_decoder()?
+        };
+
         let time_overlay = gst::ElementFactory::make("timeoverlay").build()?;
 
         // Try hardware acceleration first, fall back to software encoding
