@@ -1,4 +1,3 @@
-use crate::Protocol;
 use network::P2PSwarm;
 use serde::Serialize;
 use std::sync::Arc;

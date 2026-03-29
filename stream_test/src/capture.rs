@@ -11,7 +11,12 @@ pub struct Capture {
     pub video_reader: VideoReader,
 }
 impl Capture {
-    pub async fn new(swarm: Arc<Mutex<dyn P2PSwarm>>) -> Result<Self> {
+    pub async fn new(
+        swarm: Arc<Mutex<dyn P2PSwarm>>,
+        bitrate: u32,
+        chunk_size: u32,
+        video_path: Option<String>,
+    ) -> Result<Self> {
         let (video_tx, mut video_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
         // Spawn a task to wrap raw buffers into VideoStreamChunk and forward to P2P
@@ -31,7 +36,7 @@ impl Capture {
             });
         }
 
-        let mut video_reader = VideoReader::default();
+        let mut video_reader = VideoReader::new(bitrate, chunk_size, video_path);
         trace!("Starting screen capture...");
         video_reader.start().await?;
         trace!("Setting up callback...");

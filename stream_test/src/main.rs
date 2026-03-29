@@ -9,8 +9,8 @@ use clap::{Parser, ValueEnum};
 use log::{info, warn};
 use std::env;
 use std::fmt::Display;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::process::Command;
 use tokio::signal::ctrl_c;
 use tokio::sync::Mutex;
@@ -48,6 +48,18 @@ struct Args {
 
     #[arg(short, long, default_value = "manager")]
     role: Role,
+
+    #[arg(long, default_value_t = 500)]
+    bitrate: u32,
+
+    #[arg(long, default_value_t = 4096)]
+    chunk_size: u32,
+
+    #[arg(long)]
+    output: Option<String>,
+
+    #[arg(long)]
+    video_path: Option<String>,
 }
 
 #[tokio::main]
@@ -63,19 +75,43 @@ async fn main() -> Result<()> {
                     panic!("Failed to get exe: {}", error);
                 }
             };
-            let mut client_child = Command::new(&exe)
+            let output_path = args.output.clone().unwrap_or_else(|| {
+                format!(
+                    "analysis_{}_{}kbps_{}mtu.csv",
+                    args.protocol, args.bitrate, args.chunk_size
+                )
+            });
+            let mut analyzer_cmd = Command::new(&exe);
+            analyzer_cmd
                 .arg("--protocol")
-                .arg(&args.protocol.to_string())
+                .arg(args.protocol.to_string())
                 .arg("--role")
                 .arg("analyzer")
-                .spawn()?;
+                .arg("--bitrate")
+                .arg(args.bitrate.to_string())
+                .arg("--chunk-size")
+                .arg(args.chunk_size.to_string())
+                .arg("--output")
+                .arg(output_path.clone());
+            if let Some(video_path) = &args.video_path {
+                analyzer_cmd.arg("--video-path").arg(video_path);
+            }
+            let mut client_child = analyzer_cmd.spawn()?;
             let client_pid = client_child.id().unwrap();
-            let mut producer_child = Command::new(&exe)
+            let mut producer_cmd = Command::new(&exe);
+            producer_cmd
                 .arg("--protocol")
-                .arg(&args.protocol.to_string())
+                .arg(args.protocol.to_string())
                 .arg("--role")
                 .arg("producer")
-                .spawn()?;
+                .arg("--bitrate")
+                .arg(args.bitrate.to_string())
+                .arg("--chunk-size")
+                .arg(args.chunk_size.to_string());
+            if let Some(video_path) = &args.video_path {
+                producer_cmd.arg("--video-path").arg(video_path);
+            }
+            let mut producer_child = producer_cmd.spawn()?;
             let producer_pid = producer_child.id().unwrap();
             tokio::select! {
                 producer_status = producer_child.wait() => {
@@ -122,7 +158,13 @@ async fn main() -> Result<()> {
                 _ = ctrl_c() => {}
                 _ = analyze.analysis_join_handle => {}
             };
-            let mut wtr = csv::WriterBuilder::new().from_path("Output.csv")?;
+            let output_path = args.output.clone().unwrap_or_else(|| {
+                format!(
+                    "analysis_{}_{}kbps_{}mtu.csv",
+                    args.protocol, args.bitrate, args.chunk_size
+                )
+            });
+            let mut wtr = csv::WriterBuilder::new().from_path(output_path)?;
             let result = analyze.result.lock().await;
             for item in result.as_slice() {
                 wtr.serialize(item)?;
@@ -160,15 +202,28 @@ async fn main() -> Result<()> {
         Role::Producer => {
             println!("Starting producer");
             let mut capture = match args.protocol {
-                Protocol::Gossipsub => Capture::new(Arc::new(Mutex::new(
-                    network::gossipsub::GossipP2P::run("gossipsub").await?,
-                ))),
-                Protocol::Hybrid => Capture::new(Arc::new(Mutex::new(
-                    network::hybrid::HybridP2P::run("hybrid").await?,
-                ))),
-                Protocol::Stream => Capture::new(Arc::new(Mutex::new(
-                    network::stream::P2PStreamSwarm::run("stream").await?,
-                ))),
+                Protocol::Gossipsub => Capture::new(
+                    Arc::new(Mutex::new(
+                        network::gossipsub::GossipP2P::run("gossipsub").await?,
+                    )),
+                    args.bitrate,
+                    args.chunk_size,
+                    args.video_path.clone(),
+                ),
+                Protocol::Hybrid => Capture::new(
+                    Arc::new(Mutex::new(network::hybrid::HybridP2P::run("hybrid").await?)),
+                    args.bitrate,
+                    args.chunk_size,
+                    args.video_path.clone(),
+                ),
+                Protocol::Stream => Capture::new(
+                    Arc::new(Mutex::new(
+                        network::stream::P2PStreamSwarm::run("stream").await?,
+                    )),
+                    args.bitrate,
+                    args.chunk_size,
+                    args.video_path.clone(),
+                ),
             }
             .await?;
             tokio::select! {

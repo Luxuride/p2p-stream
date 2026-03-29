@@ -5,10 +5,12 @@ use gst_app::AppSink;
 use log::{error, info, trace, warn};
 use std::time::Duration;
 
-#[derive(Default)]
 pub struct VideoReader {
     pipeline: Option<Pipeline>,
     app_sink: Option<AppSink>,
+    bitrate: u32,
+    chunk_size: u32,
+    video_source: String,
 }
 
 // Helper function to create a software decoder when hardware acceleration fails
@@ -20,12 +22,12 @@ fn fallback_to_software_decoder() -> Result<gst::Element> {
 }
 
 // Helper function to create a software encoder when hardware acceleration fails
-fn fallback_to_software_encoder() -> Result<gst::Element> {
+fn fallback_to_software_encoder(bitrate: u32) -> Result<gst::Element> {
     warn!("Falling back to software x264 encoder");
     gst::ElementFactory::make("x264enc")
         .property("tune", "zerolatency")
         .property("speed-preset", "ultrafast")
-        .property("bitrate", 500u32)
+        .property("bitrate", bitrate)
         .property("keyframe-period", 30u32)
         .property("rate-control", 2u32)
         .build()
@@ -33,12 +35,22 @@ fn fallback_to_software_encoder() -> Result<gst::Element> {
 }
 
 impl VideoReader {
+    pub fn new(bitrate: u32, chunk_size: u32, video_path: Option<String>) -> Self {
+        let video_source = video_path
+            .or_else(|| std::env::var("VIDEO_SOURCE").ok())
+            .expect("Video source not provided. Pass --video-path or set VIDEO_SOURCE");
+        Self {
+            pipeline: None,
+            app_sink: None,
+            bitrate,
+            chunk_size,
+            video_source,
+        }
+    }
+
     fn build_pipeline(&mut self) -> Result<Pipeline> {
         let file_src = gst::ElementFactory::make("filesrc")
-            .property(
-                "location",
-                std::env::var("VIDEO_SOURCE").expect("VIDEO_SOURCE env var not set"),
-            )
+            .property("location", &self.video_source)
             .build()?;
         let demux = gst::ElementFactory::make("qtdemux").build()?;
         let start_parse = gst::ElementFactory::make("h264parse").build()?;
@@ -56,20 +68,20 @@ impl VideoReader {
         // Try hardware acceleration first, fall back to software encoding
         let encoder = if let Ok(vaapi_enc) = gst::ElementFactory::make("vaapih264enc")
             .property("quality-level", 6u32)
-            .property("bitrate", 500u32)
+            .property("bitrate", self.bitrate)
             .property("keyframe-period", 0u32)
             .build()
         {
             vaapi_enc
         } else {
-            fallback_to_software_encoder()?
+            fallback_to_software_encoder(self.bitrate)?
         };
         let end_parse = gst::ElementFactory::make("h264parse")
             .property("config-interval", 1i32)
             .build()?;
         let payload_queue = gst::ElementFactory::make("queue").build()?;
         let pay = gst::ElementFactory::make("rtph264pay")
-            .property("mtu", 2u32.pow(12))
+            .property("mtu", self.chunk_size)
             .property("pt", 96u32)
             .build()?;
 
@@ -185,10 +197,8 @@ impl VideoReader {
         let wait_time = gst::ClockTime::from_nseconds(timeout.as_nanos() as u64);
         let bus_cloned = bus.clone();
         let msg_opt = tokio::task::spawn_blocking(move || {
-            bus_cloned.timed_pop_filtered(
-                wait_time,
-                &[gst::MessageType::Eos, gst::MessageType::Error],
-            )
+            bus_cloned
+                .timed_pop_filtered(wait_time, &[gst::MessageType::Eos, gst::MessageType::Error])
         })
         .await
         .map_err(|e| anyhow!("Failed to join EOS wait task: {:?}", e))?;
@@ -223,7 +233,10 @@ impl VideoReader {
         if eos_sent {
             let reached_eos = self.wait_for_eos_timeout(timeout).await?;
             if !reached_eos {
-                warn!("Timed out waiting for EOS after {:?}, forcing NULL", timeout);
+                warn!(
+                    "Timed out waiting for EOS after {:?}, forcing NULL",
+                    timeout
+                );
             }
         } else {
             warn!("No active pipeline found while requesting EOS");
@@ -243,5 +256,11 @@ impl VideoReader {
                 return Ok(());
             }
         }
+    }
+}
+
+impl Default for VideoReader {
+    fn default() -> Self {
+        Self::new(500, 2u32.pow(12), None)
     }
 }
