@@ -1,8 +1,9 @@
 use anyhow::Result;
 use gst::Pipeline;
-use gst::prelude::{Cast, ElementExt, GstBinExtManual, ObjectExt, PadExt};
+use gst::prelude::{Cast, ElementExt, ElementExtManual, GstBinExtManual, ObjectExt, PadExt};
 use gst_app::AppSink;
-use log::{trace, warn};
+use log::{error, info, trace, warn};
+use std::time::Duration;
 
 #[derive(Default)]
 pub struct VideoReader {
@@ -153,49 +154,94 @@ impl VideoReader {
 
     pub async fn stop(&mut self) -> Result<()> {
         if let Some(pipeline) = self.pipeline.take() {
+            info!("Stopping video reader pipeline (forcing NULL)");
             let _ = pipeline.set_state(gst::State::Null);
         }
         self.app_sink = None;
         Ok(())
     }
 
-    pub async fn wait_for_eos(&self) -> Result<()> {
+    pub fn request_eos(&self) -> Result<bool> {
+        let Some(pipeline) = &self.pipeline else {
+            return Ok(false);
+        };
+        info!("Requesting EOS on video reader pipeline");
+        Ok(pipeline.send_event(gst::event::Eos::new()))
+    }
+
+    pub async fn wait_for_eos_timeout(&self, timeout: Duration) -> Result<bool> {
         use anyhow::anyhow;
         use gst::MessageView;
 
-        // If there's no pipeline, nothing to wait for.
         let pipeline = match &self.pipeline {
             Some(p) => p.clone(),
-            None => return Ok(()),
+            None => return Ok(true),
         };
 
         let bus = pipeline
             .bus()
             .ok_or(anyhow!("Pipeline has no bus to wait on"))?;
 
-        // Clone the bus for moving into the blocking task.
+        let wait_time = gst::ClockTime::from_nseconds(timeout.as_nanos() as u64);
         let bus_cloned = bus.clone();
-
-        // Block in a dedicated thread until EOS or ERROR arrives.
         let msg_opt = tokio::task::spawn_blocking(move || {
-            // Wait forever for EOS or ERROR
             bus_cloned.timed_pop_filtered(
-                gst::ClockTime::NONE,
+                wait_time,
                 &[gst::MessageType::Eos, gst::MessageType::Error],
             )
         })
         .await
-        .map_err(|e| anyhow!("Failed to join blocking task: {:?}", e))?
-        .unwrap();
+        .map_err(|e| anyhow!("Failed to join EOS wait task: {:?}", e))?;
 
-        match msg_opt.view() {
-            MessageView::Eos(_) => Ok(()),
-            MessageView::Error(err) => Err(anyhow!(
-                "Pipeline error: {} ({:?})",
-                err.error(),
-                err.debug()
-            )),
-            _ => Ok(()),
+        let Some(msg) = msg_opt else {
+            return Ok(false);
+        };
+
+        match msg.view() {
+            MessageView::Eos(_) => {
+                info!("Received EOS from video reader pipeline");
+                Ok(true)
+            }
+            MessageView::Error(err) => {
+                error!(
+                    "Pipeline error while waiting for EOS: {} ({:?})",
+                    err.error(),
+                    err.debug()
+                );
+                Err(anyhow!(
+                    "Pipeline error: {} ({:?})",
+                    err.error(),
+                    err.debug()
+                ))
+            }
+            _ => Ok(false),
+        }
+    }
+
+    pub async fn shutdown_graceful(&mut self, timeout: Duration) -> Result<()> {
+        let eos_sent = self.request_eos()?;
+        if eos_sent {
+            let reached_eos = self.wait_for_eos_timeout(timeout).await?;
+            if !reached_eos {
+                warn!("Timed out waiting for EOS after {:?}, forcing NULL", timeout);
+            }
+        } else {
+            warn!("No active pipeline found while requesting EOS");
+        }
+        self.stop().await
+    }
+
+    pub async fn wait_for_eos(&self) -> Result<()> {
+        let wait_step = Duration::from_millis(250);
+        loop {
+            if self.pipeline.is_none() {
+                return Ok(());
+            }
+
+            let reached_eos = self.wait_for_eos_timeout(wait_step).await?;
+            if reached_eos {
+                return Ok(());
+            }
         }
     }
 }

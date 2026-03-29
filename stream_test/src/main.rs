@@ -6,9 +6,10 @@ use crate::analyze::Analyze;
 use crate::capture::Capture;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use log::error;
+use log::{info, warn};
 use std::env;
 use std::fmt::Display;
+use std::time::Duration;
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::signal::ctrl_c;
@@ -158,10 +159,23 @@ async fn main() -> Result<()> {
             }
             .await?;
             tokio::select! {
-                _ = ctrl_c() => {}
-                _ = capture.video_reader.wait_for_eos() => {}
+                _ = ctrl_c() => {
+                    info!("Producer received Ctrl+C, starting graceful GStreamer shutdown");
+                    if let Err(err) = capture.video_reader.shutdown_graceful(Duration::from_secs(2)).await {
+                        warn!("Graceful shutdown failed, forcing stop: {:?}", err);
+                        capture.video_reader.stop().await?;
+                    }
+                    info!("Producer shutdown complete");
+                }
+                eos_result = capture.video_reader.wait_for_eos() => {
+                    match eos_result {
+                        Ok(()) => info!("Producer reached EOS, stopping pipeline"),
+                        Err(err) => warn!("Producer EOS wait returned error, forcing stop: {:?}", err),
+                    }
+                    capture.video_reader.stop().await?;
+                }
             }
-            capture.video_reader.stop().await?;
+            std::process::exit(0);
         }
     }
     Ok(())
