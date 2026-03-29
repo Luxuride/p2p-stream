@@ -2,3 +2,6 @@
 .direnv
 .idea
 *.mov
+*.csv
+analysis/plots/
+analysis/out/
