@@ -77,16 +77,28 @@ async fn main() -> Result<()> {
                 .arg("producer")
                 .spawn()?;
             let producer_pid = producer_child.id().unwrap();
-            let client_child_wait = client_child.wait();
-            let producer_wait = producer_child.wait();
             tokio::select! {
-                _ = futures_util::future::join_all([client_child_wait, producer_wait]) => {}
+                producer_status = producer_child.wait() => {
+                    info!("Producer exited: {:?}. Stopping analyzer...", producer_status);
+                    unsafe {
+                        libc::kill(client_pid as i32, libc::SIGINT);
+                    }
+                    let _ = client_child.wait().await;
+                }
+                analyzer_status = client_child.wait() => {
+                    info!("Analyzer exited: {:?}. Stopping producer...", analyzer_status);
+                    unsafe {
+                        libc::kill(producer_pid as i32, libc::SIGINT);
+                    }
+                    let _ = producer_child.wait().await;
+                }
                 _ = tokio::signal::ctrl_c() => {
+                    info!("Manager received Ctrl+C, stopping producer and analyzer...");
                     unsafe {
                         libc::kill(client_pid as i32, libc::SIGINT);
                         libc::kill(producer_pid as i32, libc::SIGINT);
                     }
-                    futures_util::future::join_all([
+                    let _ = futures_util::future::join_all([
                         client_child.wait(),
                         producer_child.wait()
                     ]).await;
@@ -116,6 +128,7 @@ async fn main() -> Result<()> {
                 wtr.serialize(item)?;
             }
             wtr.flush()?;
+            std::process::exit(0);
         }
         Role::Renderer => {
             println!("Starting Renderer");
