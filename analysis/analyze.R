@@ -24,7 +24,7 @@ main <- function() {
   metas <- metas[keep]
 
   if (length(csv_files) == 0) {
-    stop("No files matched expected naming pattern analysis_<protocol>_<bitrate>kbps_<mtu>mtu.csv")
+    stop("No files matched expected naming pattern analysis_<protocol>_<bitrate>kbps_<mtu>mtu[_runN].csv")
   }
 
   proto_keep <- vapply(metas, function(m) m$protocol %in% opts$protocols, logical(1))
@@ -61,7 +61,7 @@ main <- function() {
   }
 
   per_run <- do.call(rbind, run_rows)
-  per_run <- per_run[order(per_run$protocol, per_run$bitrate_kbps, per_run$mtu), ]
+  per_run <- per_run[order(per_run$protocol, per_run$bitrate_kbps, per_run$mtu, per_run$run_id), ]
 
   throughput_ts <- if (length(throughput_rows) > 0) do.call(rbind, throughput_rows) else data.frame()
   stutter_events <- if (length(stutter_rows) > 0) do.call(rbind, stutter_rows) else data.frame()

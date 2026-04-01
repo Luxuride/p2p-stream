@@ -46,18 +46,21 @@ parse_args <- function(args_vec) {
 
 parse_file_metadata <- function(path) {
   base <- basename(path)
-  match <- regexec("^analysis_([a-zA-Z0-9-]+)_([0-9]+)kbps_([0-9]+)mtu\\.csv$", base)
+  match <- regexec("^analysis_([a-zA-Z0-9-]+)_([0-9]+)kbps_([0-9]+)mtu(?:_run([0-9]+))?\\.csv$", base)
   pieces <- regmatches(base, match)[[1]]
 
-  if (length(pieces) != 4) {
+  if (!(length(pieces) %in% c(4, 5))) {
     return(NULL)
   }
+
+  run_id <- if (length(pieces) >= 5 && nzchar(pieces[[5]])) as.numeric(pieces[[5]]) else 1
 
   list(
     file = base,
     protocol = pieces[[2]],
     bitrate_kbps = as.numeric(pieces[[3]]),
-    mtu = as.numeric(pieces[[4]])
+    mtu = as.numeric(pieces[[4]]),
+    run_id = run_id
   )
 }
 

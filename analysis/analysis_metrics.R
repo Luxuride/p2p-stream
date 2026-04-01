@@ -81,6 +81,7 @@ compute_run_metrics <- function(df, meta, stall_ms, window_ms) {
   misorder_streak_events <- if (misorder_streak_count > 0) {
     data.frame(
       file = rep(meta$file, misorder_streak_count),
+      run_id = rep(meta$run_id, misorder_streak_count),
       protocol = rep(meta$protocol, misorder_streak_count),
       bitrate_kbps = rep(meta$bitrate_kbps, misorder_streak_count),
       mtu = rep(meta$mtu, misorder_streak_count),
@@ -90,6 +91,7 @@ compute_run_metrics <- function(df, meta, stall_ms, window_ms) {
   } else {
     data.frame(
       file = character(),
+      run_id = numeric(),
       protocol = character(),
       bitrate_kbps = numeric(),
       mtu = numeric(),
@@ -133,6 +135,7 @@ compute_run_metrics <- function(df, meta, stall_ms, window_ms) {
   bucket_bytes <- tapply(df$size, bucket, sum)
   throughput_ts <- data.frame(
     file = meta$file,
+    run_id = meta$run_id,
     protocol = meta$protocol,
     bitrate_kbps = meta$bitrate_kbps,
     mtu = meta$mtu,
@@ -144,6 +147,7 @@ compute_run_metrics <- function(df, meta, stall_ms, window_ms) {
 
   stutter_events <- data.frame(
     file = meta$file,
+    run_id = meta$run_id,
     protocol = meta$protocol,
     bitrate_kbps = meta$bitrate_kbps,
     mtu = meta$mtu,
@@ -153,11 +157,12 @@ compute_run_metrics <- function(df, meta, stall_ms, window_ms) {
     is_stutter = stutter_mask
   )
   stutter_events <- stutter_events[stutter_events$is_stutter, c(
-    "file", "protocol", "bitrate_kbps", "mtu", "index", "arrival_time", "inter_arrival_ms"
+    "file", "run_id", "protocol", "bitrate_kbps", "mtu", "index", "arrival_time", "inter_arrival_ms"
   )]
 
   run_metrics <- data.frame(
     file = meta$file,
+    run_id = meta$run_id,
     protocol = meta$protocol,
     bitrate_kbps = meta$bitrate_kbps,
     mtu = meta$mtu,

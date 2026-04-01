@@ -30,6 +30,44 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     file.path(base_dir, sprintf("mtu_%s", mtu_value))
   }
 
+  condition_run_label <- function(df, group_cols = c("protocol", "bitrate_kbps", "mtu")) {
+    if (nrow(df) == 0) {
+      return("n=0 runs/condition")
+    }
+
+    keys <- intersect(group_cols, names(df))
+    if (length(keys) == 0) {
+      return("n=? runs/condition")
+    }
+
+    if ("run_id" %in% names(df)) {
+      counts <- aggregate(df$run_id, by = df[keys], FUN = function(x) length(unique(x)))
+      vals <- counts$x
+    } else if ("file" %in% names(df)) {
+      counts <- aggregate(df$file, by = df[keys], FUN = function(x) length(unique(x)))
+      vals <- counts$x
+    } else {
+      return("n=? runs/condition")
+    }
+
+    if (length(vals) == 0 || all(is.na(vals))) {
+      return("n=? runs/condition")
+    }
+
+    min_n <- min(vals, na.rm = TRUE)
+    max_n <- max(vals, na.rm = TRUE)
+    if (min_n == max_n) {
+      sprintf("n=%d runs/condition", min_n)
+    } else {
+      sprintf("n=%d-%d runs/condition", min_n, max_n)
+    }
+  }
+
+  title_with_runs <- function(df, title_text, direction_text = NULL, group_cols = c("protocol", "bitrate_kbps", "mtu")) {
+    base_title <- ifelse(is.null(direction_text), title_text, sprintf("%s (%s)", title_text, direction_text))
+    sprintf("%s [%s]", base_title, condition_run_label(df, group_cols = group_cols))
+  }
+
   safe_positive <- function(x) {
     x[is.na(x)] <- NA_real_
     x[!is.na(x) & x <= 0] <- 1e-9
@@ -60,7 +98,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       las = 1,
       cex.names = 1.0,
       col = bar_cols,
-      main = ifelse(is.null(direction_text), title_text, sprintf("%s (%s)", title_text, direction_text)),
+      main = title_with_runs(df, title_text, direction_text),
       xlab = ylab_text,
       xlim = if (log_variant) c(xlim_lower, xlim_upper) else c(0, xlim_upper),
       log = if (log_variant) "x" else ""
@@ -103,7 +141,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       col = unname(protocol_palette[protocol_levels]),
       names.arg = paste0(groups, " ", group_label),
       las = 1,
-      main = ifelse(is.null(direction_text), title_text, sprintf("%s (%s)", title_text, direction_text)),
+      main = title_with_runs(df, title_text, direction_text),
       xlab = group_label,
       ylab = ylab_text,
       ylim = if (log_variant) c(y_lower, y_upper) else c(0, y_upper),
@@ -150,7 +188,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       col = unname(protocol_palette[protocol_levels]),
       names.arg = paste0(mtu_levels, " mtu"),
       las = 1,
-      main = ifelse(is.null(direction_text), title_text, sprintf("%s (%s)", title_text, direction_text)),
+      main = title_with_runs(d, title_text, direction_text),
       xlab = "MTU",
       ylab = ylab_text,
       ylim = if (log_variant) c(y_lower, y_upper) else c(0, y_upper),
@@ -181,7 +219,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
           data = box_data,
           log = "y",
           ylim = c(1e-9, y_upper),
-          main = sprintf("%s at MTU %s (log scale; %s)", title_text, mtu_value, direction_text),
+          main = sprintf("%s [%s]", sprintf("%s at MTU %s (log scale; %s)", title_text, mtu_value, direction_text), condition_run_label(d)),
           xlab = "Protocol",
           ylab = ylab_text,
           col = unname(protocol_palette[protocol_levels])
@@ -193,7 +231,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
           .metric ~ protocol,
           data = box_data,
           ylim = c(0, y_upper),
-          main = sprintf("%s at MTU %s (%s)", title_text, mtu_value, direction_text),
+          main = sprintf("%s [%s]", sprintf("%s at MTU %s (%s)", title_text, mtu_value, direction_text), condition_run_label(d)),
           xlab = "Protocol",
           ylab = ylab_text,
           col = unname(protocol_palette[protocol_levels])
@@ -230,7 +268,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
           box_data[[metric_col]] ~ bitrate_kbps,
           data = box_data,
           ylim = c(0, y_upper),
-          main = sprintf("%s [%s] at MTU %s (%s)", title_text, proto, mtu_value, direction_text),
+          main = sprintf("%s [%s]", sprintf("%s [%s] at MTU %s (%s)", title_text, proto, mtu_value, direction_text), condition_run_label(proto_data)),
           xlab = "Bitrate (kbps)",
           ylab = ylab_text,
           col = protocol_palette[[proto]]
@@ -363,7 +401,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     boxplot(
       delay_p95_ms ~ protocol,
       data = box_data,
-      main = sprintf("Delay P95 by Protocol at MTU %s (lower is better)", mtu_value),
+      main = sprintf("Delay P95 by Protocol at MTU %s (lower is better) [%s]", mtu_value, condition_run_label(mtu_data)),
       xlab = "Protocol",
       ylab = "Delay P95 (ms)",
       ylim = c(0, max(box_data$delay_p95_ms, na.rm = TRUE) * 1.1),
@@ -379,7 +417,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       delay_p95_ms ~ protocol,
       data = box_data,
       log = "y",
-      main = sprintf("Delay P95 by Protocol at MTU %s (log scale; lower is better)", mtu_value),
+      main = sprintf("Delay P95 by Protocol at MTU %s (log scale; lower is better) [%s]", mtu_value, condition_run_label(mtu_data)),
       xlab = "Protocol",
       ylab = "Delay P95 (ms)",
       col = unname(protocol_palette[protocol_levels])
@@ -414,7 +452,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       ylab = "Goodput (Mbps)",
       xlim = c(0, max(d$inferred_loss_pct, na.rm = TRUE) * 1.1),
       ylim = c(0, max(d$goodput_mbps, na.rm = TRUE) * 1.1),
-      main = sprintf("Inferred Loss vs Goodput at MTU %s (lower loss, higher goodput is better)", mtu_value)
+      main = sprintf("Inferred Loss vs Goodput at MTU %s (lower loss, higher goodput is better) [%s]", mtu_value, condition_run_label(d))
     )
     legend("topright", legend = protocol_levels, col = unname(protocol_palette[protocol_levels]), pch = 19, bty = "n")
     dev.off()
@@ -426,7 +464,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       xlab = "Inferred Loss (%)",
       ylab = "Goodput (Mbps)",
       log = "y",
-      main = sprintf("Inferred Loss vs Goodput at MTU %s (log scale)", mtu_value)
+      main = sprintf("Inferred Loss vs Goodput at MTU %s (log scale) [%s]", mtu_value, condition_run_label(d))
     )
     legend("topright", legend = protocol_levels, col = unname(protocol_palette[protocol_levels]), pch = 19, bty = "n")
     dev.off()
@@ -551,7 +589,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
           ylim = c(0, max(ylim, na.rm = TRUE)),
         xlab = "Window Start (ms)",
         ylab = "Throughput (Mbps)",
-        main = sprintf("Throughput Timelines at MTU %s (higher is better)", mtu_value)
+        main = sprintf("Throughput Timelines at MTU %s (higher is better) [%s]", mtu_value, condition_run_label(d))
       )
 
       run_levels <- unique(d$file)
@@ -604,7 +642,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
         xlab = "Window Start (ms)",
         ylab = "Throughput (Mbps)",
         log = "y",
-        main = sprintf("Throughput Timelines at MTU %s (log scale; higher is better)", mtu_value)
+        main = sprintf("Throughput Timelines at MTU %s (log scale; higher is better) [%s]", mtu_value, condition_run_label(d))
       )
       for (i in seq_along(run_levels)) {
         f <- run_levels[[i]]

@@ -12,21 +12,29 @@ if [ -z "$VIDEO_PATH" ]; then
 fi
 
 PROTOCOLS=(stream gossipsub)
-BITRATES=(250 500 1000 2500 5000 10000)
+BITRATES=(500 2500 5000)
 CHUNK_SIZES=(1200 4096)
+RUNS="${RUNS:-3}"
+
+if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [ "$RUNS" -lt 1 ]; then
+  echo "RUNS must be a positive integer (got: $RUNS)"
+  exit 1
+fi
 
 for protocol in "${PROTOCOLS[@]}"; do
   for bitrate in "${BITRATES[@]}"; do
     for chunk_size in "${CHUNK_SIZES[@]}"; do
-      output="analysis_${protocol}_${bitrate}kbps_${chunk_size}mtu.csv"
-      echo "Running protocol=${protocol} bitrate=${bitrate} chunk_size=${chunk_size} -> ${output}"
-      cargo run -p stream_test -- \
-        --role manager \
-        --protocol "$protocol" \
-        --bitrate "$bitrate" \
-        --chunk-size "$chunk_size" \
-        --video-path "$VIDEO_PATH" \
-        --output "$output"
+      for run in $(seq 1 "$RUNS"); do
+        output="analysis_${protocol}_${bitrate}kbps_${chunk_size}mtu_run${run}.csv"
+        echo "Running protocol=${protocol} bitrate=${bitrate} chunk_size=${chunk_size} run=${run}/${RUNS} -> ${output}"
+        cargo run -p stream_test -- \
+          --role manager \
+          --protocol "$protocol" \
+          --bitrate "$bitrate" \
+          --chunk-size "$chunk_size" \
+          --video-path "$VIDEO_PATH" \
+          --output "$output"
+      done
     done
   done
 done
