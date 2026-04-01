@@ -24,14 +24,18 @@ fn fallback_to_software_decoder() -> Result<gst::Element> {
 // Helper function to create a software encoder when hardware acceleration fails
 fn fallback_to_software_encoder(bitrate: u32) -> Result<gst::Element> {
     warn!("Falling back to software x264 encoder");
-    gst::ElementFactory::make("x264enc")
+    let encoder = gst::ElementFactory::make("x264enc")
         .property("tune", "zerolatency")
         .property("speed-preset", "ultrafast")
         .property("bitrate", bitrate)
-        .property("keyframe-period", 30u32)
-        .property("rate-control", 2u32)
+        .property_from_str("pass", "cbr")
+        .property("key-int-max", 30u32)
+        .property("byte-stream", true)
+        .property("vbv-buf-capacity", 100u32)
         .build()
-        .map_err(|e| anyhow::anyhow!("Failed to create software encoder: {:?}", e))
+        .map_err(|e| anyhow::anyhow!("Failed to create software encoder: {:?}", e))?;
+
+    Ok(encoder)
 }
 
 impl VideoReader {
@@ -65,13 +69,15 @@ impl VideoReader {
 
         let time_overlay = gst::ElementFactory::make("timeoverlay").build()?;
 
-        // Try hardware acceleration first, fall back to software encoding
+        // Prefer strict CBR where possible so requested bitrate is actually applied.
+        // VAAPI may be ignored on some driver stacks unless rate-control is explicit.
         let encoder = if let Ok(vaapi_enc) = gst::ElementFactory::make("vaapih264enc")
-            .property("quality-level", 6u32)
             .property("bitrate", self.bitrate)
-            .property("keyframe-period", 0u32)
+            .property("keyframe-period", 30u32)
+            .property_from_str("rate-control", "cbr")
             .build()
         {
+            trace!("Using VA-API H.264 encoder in CBR mode");
             vaapi_enc
         } else {
             fallback_to_software_encoder(self.bitrate)?

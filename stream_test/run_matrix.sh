@@ -12,7 +12,7 @@ if [ -z "$VIDEO_PATH" ]; then
 fi
 
 PROTOCOLS=(stream gossipsub)
-BITRATES=(250 500 1000)
+BITRATES=(250 500 1000 2500 5000 10000)
 CHUNK_SIZES=(1200 4096)
 
 for protocol in "${PROTOCOLS[@]}"; do
