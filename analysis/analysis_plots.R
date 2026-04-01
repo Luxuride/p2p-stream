@@ -78,6 +78,20 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     sub("\\.png$", "_log.png", path)
   }
 
+  finite_upper <- function(x, fallback = 1) {
+    vals <- x[is.finite(x)]
+    if (length(vals) == 0) {
+      return(fallback)
+    }
+    max(vals) * 1.1
+  }
+
+  render_no_data_panel <- function(title_text, note = "No plottable values") {
+    plot.new()
+    title(main = title_text)
+    text(0.5, 0.5, note)
+  }
+
   plot_run_bar <- function(df, metric_col, file_path, title_text, ylab_text, direction_text = NULL, log_variant = FALSE) {
     ord <- order(df$protocol, df$bitrate_kbps, df$mtu)
     ordered_protocols <- as.character(df$protocol[ord])
@@ -89,6 +103,12 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       values <- safe_positive(values)
     }
     xlim_values <- values[!is.na(values)]
+    final_title <- title_with_runs(df, title_text, direction_text)
+    if (length(xlim_values) == 0) {
+      render_no_data_panel(final_title, if (log_variant) "No positive values for log-scale plot" else "No plottable values")
+      dev.off()
+      return(invisible(NULL))
+    }
     xlim_lower <- if (length(xlim_values) > 0) min(xlim_values) * 0.8 else 1e-9
     xlim_upper <- if (length(xlim_values) > 0) max(xlim_values) * 1.1 else 1
     barplot(
@@ -98,7 +118,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       las = 1,
       cex.names = 1.0,
       col = bar_cols,
-      main = title_with_runs(df, title_text, direction_text),
+      main = final_title,
       xlab = ylab_text,
       xlim = if (log_variant) c(xlim_lower, xlim_upper) else c(0, xlim_upper),
       log = if (log_variant) "x" else ""
@@ -131,6 +151,13 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       value_matrix[!is.na(value_matrix)] <- pmax(value_matrix[!is.na(value_matrix)], 1e-9)
     }
     yvals <- value_matrix[!is.na(value_matrix)]
+    final_title <- title_with_runs(df, title_text, direction_text)
+    if (length(yvals) == 0) {
+      png(file_path, width = 1400, height = 800)
+      render_no_data_panel(final_title, if (log_variant) "No positive values for log-scale plot" else "No plottable values")
+      dev.off()
+      return(invisible(value_matrix))
+    }
     y_lower <- if (length(yvals) > 0) min(yvals) * 0.8 else 1e-9
     y_upper <- if (length(yvals) > 0) max(yvals) * 1.1 else 1
 
@@ -141,7 +168,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       col = unname(protocol_palette[protocol_levels]),
       names.arg = paste0(groups, " ", group_label),
       las = 1,
-      main = title_with_runs(df, title_text, direction_text),
+      main = final_title,
       xlab = group_label,
       ylab = ylab_text,
       ylim = if (log_variant) c(y_lower, y_upper) else c(0, y_upper),
@@ -178,6 +205,13 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       value_matrix[!is.na(value_matrix)] <- pmax(value_matrix[!is.na(value_matrix)], 1e-9)
     }
     yvals <- value_matrix[!is.na(value_matrix)]
+    final_title <- title_with_runs(d, title_text, direction_text)
+    if (length(yvals) == 0) {
+      png(file_path, width = 1400, height = 800)
+      render_no_data_panel(final_title, if (log_variant) "No positive values for log-scale plot" else "No plottable values")
+      dev.off()
+      return(invisible(NULL))
+    }
     y_lower <- if (length(yvals) > 0) min(yvals) * 0.8 else 1e-9
     y_upper <- if (length(yvals) > 0) max(yvals) * 1.1 else 1
 
@@ -188,7 +222,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       col = unname(protocol_palette[protocol_levels]),
       names.arg = paste0(mtu_levels, " mtu"),
       las = 1,
-      main = title_with_runs(d, title_text, direction_text),
+      main = final_title,
       xlab = "MTU",
       ylab = ylab_text,
       ylim = if (log_variant) c(y_lower, y_upper) else c(0, y_upper),
@@ -208,12 +242,16 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       dir.create(mtu_dir, recursive = TRUE, showWarnings = FALSE)
       png(file.path(mtu_dir, if (log_variant) maybe_log_variant(file_stub) else file_stub), width = 1200, height = 700)
       box_data <- d
-      box_data$protocol <- factor(as.character(box_data$protocol), levels = protocol_levels)
+      present_protocols <- protocol_levels[protocol_levels %in% unique(as.character(box_data$protocol))]
+      if (length(present_protocols) == 0) {
+        dev.off()
+        next
+      }
+      box_data$protocol <- factor(as.character(box_data$protocol), levels = present_protocols)
       box_data$.metric <- box_data[[metric_col]]
       if (log_variant) {
         box_data$.metric <- ifelse(is.na(box_data$.metric), NA_real_, pmax(box_data$.metric, 1e-9))
-        yvals <- box_data$.metric
-        y_upper <- max(yvals, na.rm = TRUE) * 1.1
+        y_upper <- finite_upper(box_data$.metric, fallback = 1)
         boxplot(
           .metric ~ protocol,
           data = box_data,
@@ -222,11 +260,10 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
           main = sprintf("%s [%s]", sprintf("%s at MTU %s (log scale; %s)", title_text, mtu_value, direction_text), condition_run_label(d)),
           xlab = "Protocol",
           ylab = ylab_text,
-          col = unname(protocol_palette[protocol_levels])
+          col = unname(protocol_palette[present_protocols])
         )
       } else {
-        yvals <- box_data$.metric
-        y_upper <- max(yvals, na.rm = TRUE) * 1.1
+        y_upper <- finite_upper(box_data$.metric, fallback = 1)
         boxplot(
           .metric ~ protocol,
           data = box_data,
@@ -234,10 +271,10 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
           main = sprintf("%s [%s]", sprintf("%s at MTU %s (%s)", title_text, mtu_value, direction_text), condition_run_label(d)),
           xlab = "Protocol",
           ylab = ylab_text,
-          col = unname(protocol_palette[protocol_levels])
+          col = unname(protocol_palette[present_protocols])
         )
       }
-      legend("topright", legend = protocol_levels, fill = unname(protocol_palette[protocol_levels]), bty = "n")
+      legend("topright", legend = present_protocols, fill = unname(protocol_palette[present_protocols]), bty = "n")
       dev.off()
     }
   }
@@ -262,8 +299,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
         png(out_file, width = 1200, height = 700)
         box_data <- proto_data
         box_data$bitrate_kbps <- factor(as.character(box_data$bitrate_kbps), levels = as.character(sort(unique(box_data$bitrate_kbps))))
-        yvals <- box_data[[metric_col]]
-        y_upper <- max(yvals, na.rm = TRUE) * 1.1
+        y_upper <- finite_upper(box_data[[metric_col]], fallback = 1)
         boxplot(
           box_data[[metric_col]] ~ bitrate_kbps,
           data = box_data,
@@ -397,22 +433,27 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
 
     png(file.path(delay_dir, sprintf("delay_p95_by_protocol_mtu_%s.png", mtu_value)), width = 1200, height = 700)
     box_data <- mtu_data
-    box_data$protocol <- factor(as.character(box_data$protocol), levels = protocol_levels)
+    present_protocols <- protocol_levels[protocol_levels %in% unique(as.character(box_data$protocol))]
+    if (length(present_protocols) == 0) {
+      dev.off()
+      next
+    }
+    box_data$protocol <- factor(as.character(box_data$protocol), levels = present_protocols)
     boxplot(
       delay_p95_ms ~ protocol,
       data = box_data,
       main = sprintf("Delay P95 by Protocol at MTU %s (lower is better) [%s]", mtu_value, condition_run_label(mtu_data)),
       xlab = "Protocol",
       ylab = "Delay P95 (ms)",
-      ylim = c(0, max(box_data$delay_p95_ms, na.rm = TRUE) * 1.1),
-      col = unname(protocol_palette[protocol_levels])
+      ylim = c(0, finite_upper(box_data$delay_p95_ms, fallback = 1)),
+      col = unname(protocol_palette[present_protocols])
     )
-    legend("topright", legend = protocol_levels, fill = unname(protocol_palette[protocol_levels]), bty = "n")
+    legend("topright", legend = present_protocols, fill = unname(protocol_palette[present_protocols]), bty = "n")
     dev.off()
 
     png(file.path(delay_dir, sprintf("delay_p95_by_protocol_mtu_%s_log.png", mtu_value)), width = 1200, height = 700)
     box_data <- mtu_data
-    box_data$protocol <- factor(as.character(box_data$protocol), levels = protocol_levels)
+    box_data$protocol <- factor(as.character(box_data$protocol), levels = present_protocols)
     boxplot(
       delay_p95_ms ~ protocol,
       data = box_data,
@@ -420,9 +461,9 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       main = sprintf("Delay P95 by Protocol at MTU %s (log scale; lower is better) [%s]", mtu_value, condition_run_label(mtu_data)),
       xlab = "Protocol",
       ylab = "Delay P95 (ms)",
-      col = unname(protocol_palette[protocol_levels])
+      col = unname(protocol_palette[present_protocols])
     )
-    legend("topright", legend = protocol_levels, fill = unname(protocol_palette[protocol_levels]), bty = "n")
+    legend("topright", legend = present_protocols, fill = unname(protocol_palette[present_protocols]), bty = "n")
     dev.off()
   }
 
