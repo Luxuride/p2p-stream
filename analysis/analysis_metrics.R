@@ -127,7 +127,9 @@ compute_run_metrics <- function(df, meta, stall_ms, window_ms) {
   jitter_p95 <- suppressWarnings(as.numeric(quantile(abs_delay_delta_ms, probs = 0.95, na.rm = TRUE)))
 
   target_interarrival_ms <- ifelse(meta$bitrate_kbps > 0, (mean(df$size, na.rm = TRUE) * 8) / as.numeric(meta$bitrate_kbps), NA_real_)
-  stability_score <- 100 - (pmin(100, delay_cv * 100) * 0.5 + pmin(100, inter_arrival_cv * 100) * 0.5)
+  # Use absolute timing variation here so the score compares protocols on the
+  # same scale instead of normalizing each run by its own mean.
+  stability_score <- 100 - (pmin(100, delay_sd) * 0.5 + pmin(100, inter_arrival_sd) * 0.5)
   stability_score <- pmax(stability_score, 0)
 
   t0 <- min(df$arrival_time)

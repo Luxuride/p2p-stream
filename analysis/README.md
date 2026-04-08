@@ -13,7 +13,7 @@ The main entrypoint is [analysis/analyze.R](analysis/analyze.R). It sources help
 Per run:
 
 - Delay: mean, sd, variance, p50/p95/p99, max
-- Stability: delay coefficient of variation (CV), inter-arrival CV, combined `stability_score_0_100`
+- Stability: delay sd, inter-arrival sd, combined `stability_score_0_100` based on absolute timing variation
 - Jitter: mean and p95 of absolute delay deltas
 - Stuttering: count/total/longest inter-arrival gaps above threshold
 - Throughput: run goodput (Mbps) + windowed throughput timeline
