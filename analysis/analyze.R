@@ -62,15 +62,24 @@ main <- function() {
 
   per_run <- do.call(rbind, run_rows)
   per_run <- per_run[order(per_run$protocol, per_run$bitrate_kbps, per_run$mtu, per_run$run_id), ]
+  grouped <- aggregate_group_metrics(per_run)
+  grouped_plot <- grouped
+  numeric_cols <- names(per_run)[sapply(per_run, is.numeric)]
+  for (col in numeric_cols) {
+    mean_col <- paste0(col, "_mean")
+    if (mean_col %in% names(grouped_plot)) {
+      grouped_plot[[col]] <- grouped_plot[[mean_col]]
+    }
+  }
 
   throughput_ts <- if (length(throughput_rows) > 0) do.call(rbind, throughput_rows) else data.frame()
   stutter_events <- if (length(stutter_rows) > 0) do.call(rbind, stutter_rows) else data.frame()
   misorder_streak_events <- if (length(streak_rows) > 0) do.call(rbind, streak_rows) else data.frame()
 
-  plot_outputs(per_run, throughput_ts, misorder_streak_events, file.path(opts$root, "analysis"))
+  plot_outputs(per_run, grouped_plot, throughput_ts, misorder_streak_events, file.path(opts$root, "analysis"))
   export_summary_tables(
     per_run,
-    aggregate_group_metrics(per_run),
+    grouped,
     stutter_events,
     misorder_streak_events,
     file.path(opts$root, "analysis", "out")

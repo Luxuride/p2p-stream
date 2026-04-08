@@ -12,7 +12,7 @@ if [ -z "$VIDEO_PATH" ]; then
 fi
 
 PROTOCOLS=(stream gossipsub)
-BITRATES=(500 2500 5000)
+BITRATES=(500 2500 5000 10000)
 CHUNK_SIZES=(1200 4096)
 RUNS="${RUNS:-3}"
 

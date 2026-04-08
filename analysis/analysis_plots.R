@@ -1,4 +1,4 @@
-plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir) {
+plot_outputs <- function(per_run, grouped, throughput_ts, misorder_streak_events, out_dir) {
   plot_dir <- file.path(out_dir, "plots")
   dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
   root_pngs <- list.files(plot_dir, pattern = "\\.png$", full.names = TRUE, recursive = TRUE)
@@ -7,7 +7,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
   }
 
   preferred_protocol_order <- c("stream", "gossipsub")
-  protocol_levels <- unique(as.character(per_run$protocol))
+  protocol_levels <- unique(as.character(grouped$protocol))
   protocol_levels <- c(
     preferred_protocol_order[preferred_protocol_order %in% protocol_levels],
     sort(setdiff(protocol_levels, preferred_protocol_order))
@@ -25,7 +25,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     protocol_palette[other_protocols] <- setNames(rainbow(length(other_protocols)), other_protocols)
   }
 
-  mtu_levels <- sort(unique(per_run$mtu))
+  mtu_levels <- sort(unique(grouped$mtu))
   mtu_group_dir <- function(base_dir, mtu_value) {
     file.path(base_dir, sprintf("mtu_%s", mtu_value))
   }
@@ -40,7 +40,10 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
       return("n=? runs/condition")
     }
 
-    if ("run_id" %in% names(df)) {
+    if ("run_count" %in% names(df)) {
+      counts <- aggregate(df$run_count, by = df[keys], FUN = function(x) max(x, na.rm = TRUE))
+      vals <- counts$x
+    } else if ("run_id" %in% names(df)) {
       counts <- aggregate(df$run_id, by = df[keys], FUN = function(x) length(unique(x)))
       vals <- counts$x
     } else if ("file" %in% names(df)) {
@@ -96,6 +99,12 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     ord <- order(df$protocol, df$bitrate_kbps, df$mtu)
     ordered_protocols <- as.character(df$protocol[ord])
     bar_cols <- unname(protocol_palette[ordered_protocols])
+    if ("file" %in% names(df)) {
+      bar_labels <- df$file[ord]
+    } else {
+      bar_labels <- sprintf("%s\n%skbps\n%smTU", df$protocol[ord], df$bitrate_kbps[ord], df$mtu[ord])
+      bar_labels <- gsub("mTU", "mtu", bar_labels, fixed = TRUE)
+    }
     png(file_path, width = 1800, height = 900)
     par(mar = c(4, 18, 4, 2) + 0.1, xpd = NA)
     values <- df[[metric_col]][ord]
@@ -113,7 +122,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     xlim_upper <- if (length(xlim_values) > 0) max(xlim_values) * 1.1 else 1
     barplot(
       values,
-      names.arg = df$file[ord],
+      names.arg = bar_labels,
       horiz = TRUE,
       las = 1,
       cex.names = 1.0,
@@ -279,7 +288,68 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     }
   }
 
-  plot_metric_box_per_protocol_by_mtu <- function(df, metric_col, base_dir, file_stub, title_text, ylab_text, direction_text) {
+  plot_protocol_box_by_bitrate <- function(df, metric_col, base_dir, file_stub, title_text, ylab_text, direction_text, log_variant = FALSE) {
+    for (mtu_value in mtu_levels) {
+      mtu_data <- df[df$mtu == mtu_value, , drop = FALSE]
+      if (nrow(mtu_data) == 0) {
+        next
+      }
+
+      mtu_dir <- mtu_group_dir(base_dir, mtu_value)
+      dir.create(mtu_dir, recursive = TRUE, showWarnings = FALSE)
+      bitrate_levels <- sort(unique(mtu_data$bitrate_kbps))
+
+      for (br in bitrate_levels) {
+        d <- mtu_data[mtu_data$bitrate_kbps == br, , drop = FALSE]
+        if (nrow(d) == 0) {
+          next
+        }
+
+        out_file <- file.path(mtu_dir, sprintf("%s_%skbps.png", sub("\\.png$", "", file_stub), br))
+        png(out_file, width = 1200, height = 700)
+
+        box_data <- d
+        present_protocols <- protocol_levels[protocol_levels %in% unique(as.character(box_data$protocol))]
+        if (length(present_protocols) == 0) {
+          dev.off()
+          next
+        }
+
+        box_data$protocol <- factor(as.character(box_data$protocol), levels = present_protocols)
+        box_data$.metric <- box_data[[metric_col]]
+        if (log_variant) {
+          box_data$.metric <- ifelse(is.na(box_data$.metric), NA_real_, pmax(box_data$.metric, 1e-9))
+          y_upper <- finite_upper(box_data$.metric, fallback = 1)
+          boxplot(
+            .metric ~ protocol,
+            data = box_data,
+            log = "y",
+            ylim = c(1e-9, y_upper),
+            main = sprintf("%s [%s] at MTU %s, bitrate %s kbps (log scale; %s)", title_text, condition_run_label(d), mtu_value, br, direction_text),
+            xlab = "Protocol",
+            ylab = ylab_text,
+            col = unname(protocol_palette[present_protocols])
+          )
+        } else {
+          y_upper <- finite_upper(box_data$.metric, fallback = 1)
+          boxplot(
+            .metric ~ protocol,
+            data = box_data,
+            ylim = c(0, y_upper),
+            main = sprintf("%s [%s] at MTU %s, bitrate %s kbps (%s)", title_text, condition_run_label(d), mtu_value, br, direction_text),
+            xlab = "Protocol",
+            ylab = ylab_text,
+            col = unname(protocol_palette[present_protocols])
+          )
+        }
+
+        legend("topright", legend = present_protocols, fill = unname(protocol_palette[present_protocols]), bty = "n")
+        dev.off()
+      }
+    }
+  }
+
+  plot_metric_box_per_protocol_by_mtu <- function(df, metric_col, base_dir, file_stub, title_text, ylab_text, direction_text, log_variant = FALSE) {
     for (mtu_value in mtu_levels) {
       mtu_data <- df[df$mtu == mtu_value, , drop = FALSE]
       if (nrow(mtu_data) == 0) {
@@ -295,20 +365,39 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
         mtu_dir <- mtu_group_dir(base_dir, mtu_value)
         dir.create(mtu_dir, recursive = TRUE, showWarnings = FALSE)
         out_file <- file.path(mtu_dir, sprintf("%s_%s.png", sub("\\.png$", "", file_stub), proto))
+        if (log_variant) {
+          out_file <- sub("\\.png$", "_log.png", out_file)
+        }
 
         png(out_file, width = 1200, height = 700)
         box_data <- proto_data
         box_data$bitrate_kbps <- factor(as.character(box_data$bitrate_kbps), levels = as.character(sort(unique(box_data$bitrate_kbps))))
-        y_upper <- finite_upper(box_data[[metric_col]], fallback = 1)
-        boxplot(
-          box_data[[metric_col]] ~ bitrate_kbps,
-          data = box_data,
-          ylim = c(0, y_upper),
-          main = sprintf("%s [%s]", sprintf("%s [%s] at MTU %s (%s)", title_text, proto, mtu_value, direction_text), condition_run_label(proto_data)),
-          xlab = "Bitrate (kbps)",
-          ylab = ylab_text,
-          col = protocol_palette[[proto]]
-        )
+        box_data$.metric <- box_data[[metric_col]]
+        if (log_variant) {
+          box_data$.metric <- ifelse(is.na(box_data$.metric), NA_real_, pmax(box_data$.metric, 1e-9))
+          y_upper <- finite_upper(box_data$.metric, fallback = 1)
+          boxplot(
+            .metric ~ bitrate_kbps,
+            data = box_data,
+            log = "y",
+            ylim = c(1e-9, y_upper),
+            main = sprintf("%s [%s]", sprintf("%s [%s] at MTU %s (log scale; %s)", title_text, proto, mtu_value, direction_text), condition_run_label(proto_data)),
+            xlab = "Bitrate (kbps)",
+            ylab = ylab_text,
+            col = protocol_palette[[proto]]
+          )
+        } else {
+          y_upper <- finite_upper(box_data$.metric, fallback = 1)
+          boxplot(
+            .metric ~ bitrate_kbps,
+            data = box_data,
+            ylim = c(0, y_upper),
+            main = sprintf("%s [%s]", sprintf("%s [%s] at MTU %s (%s)", title_text, proto, mtu_value, direction_text), condition_run_label(proto_data)),
+            xlab = "Bitrate (kbps)",
+            ylab = ylab_text,
+            col = protocol_palette[[proto]]
+          )
+        }
         dev.off()
       }
     }
@@ -322,7 +411,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     }
     bitrate_dir <- file.path(plot_dir, "bitrate")
     for (mtu_value in mtu_levels) {
-      d <- per_run[per_run$mtu == mtu_value, , drop = FALSE]
+      d <- grouped[grouped$mtu == mtu_value, , drop = FALSE]
       if (nrow(d) == 0) {
         next
       }
@@ -363,11 +452,11 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     }
     mtu_dir <- file.path(plot_dir, "mtu")
     dir.create(mtu_dir, recursive = TRUE, showWarnings = FALSE)
-    bitrates <- sort(unique(per_run$bitrate_kbps))
+    bitrates <- sort(unique(grouped$bitrate_kbps))
     for (br in bitrates) {
       file_name <- sprintf("%s_%skbps.png", file_stub, br)
       plot_protocol_mtu_comparison(
-        per_run,
+        grouped,
         metric_col = metric_col,
         bitrate_value = br,
         file_path = file.path(mtu_dir, file_name),
@@ -376,7 +465,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
         direction_text = direction_text
       )
       plot_protocol_mtu_comparison(
-        per_run,
+        grouped,
         metric_col = metric_col,
         bitrate_value = br,
         file_path = file.path(mtu_dir, maybe_log_variant(file_name)),
@@ -390,7 +479,7 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
 
   plot_run_metric_by_mtu <- function(metric_col, base_dir, file_name, title_text, ylab_text, direction_text) {
     for (mtu_value in mtu_levels) {
-      d <- per_run[per_run$mtu == mtu_value, , drop = FALSE]
+      d <- grouped[grouped$mtu == mtu_value, , drop = FALSE]
       if (nrow(d) == 0) {
         next
       }
@@ -419,14 +508,37 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
   # Delay plots.
   delay_dir <- file.path(plot_dir, "delay")
   dir.create(delay_dir, recursive = TRUE, showWarnings = FALSE)
-  plot_run_metric_by_mtu("delay_p95_ms", delay_dir, "delay_p95_by_run.png", "Delay P95 by Run", "Delay P95 (ms)", "lower is better")
-  plot_run_metric_by_mtu("delay_mean_ms", delay_dir, "delay_mean_by_run.png", "Delay Mean by Run", "Delay Mean (ms)", "lower is better")
-  plot_run_metric_by_mtu("delay_p99_ms", delay_dir, "delay_p99_by_run.png", "Delay P99 by Run", "Delay P99 (ms)", "lower is better")
-  plot_run_metric_by_mtu("delay_cv", delay_dir, "delay_cv_by_run.png", "Delay CV by Run", "Delay CV", "lower is better")
-  plot_run_metric_by_mtu("jitter_p95_ms", delay_dir, "delay_jitter_p95_by_run.png", "Delay Jitter P95 by Run", "Jitter P95 (ms)", "lower is better")
+  plot_run_metric_by_mtu("delay_p95_ms", delay_dir, "delay_p95_by_condition.png", "Delay P95 by Condition", "Delay P95 (ms)", "lower is better")
+  plot_run_metric_by_mtu("delay_mean_ms", delay_dir, "delay_mean_by_condition.png", "Delay Mean by Condition", "Delay Mean (ms)", "lower is better")
+  plot_run_metric_by_mtu("delay_p99_ms", delay_dir, "delay_p99_by_condition.png", "Delay P99 by Condition", "Delay P99 (ms)", "lower is better")
+  plot_run_metric_by_mtu("delay_cv", delay_dir, "delay_cv_by_condition.png", "Delay CV by Condition", "Delay CV", "lower is better")
+  plot_run_metric_by_mtu("jitter_p95_ms", delay_dir, "delay_jitter_p95_by_condition.png", "Delay Jitter P95 by Condition", "Jitter P95 (ms)", "lower is better")
+
+  delay_bitrate_dir <- file.path(delay_dir, "bitrate")
+  dir.create(delay_bitrate_dir, recursive = TRUE, showWarnings = FALSE)
+  plot_metric_box_per_protocol_by_mtu(
+    per_run,
+    metric_col = "delay_p95_ms",
+    base_dir = delay_bitrate_dir,
+    file_stub = "delay_p95_by_bitrate_boxplot.png",
+    title_text = "Delay P95 Boxplot by Bitrate",
+    ylab_text = "Delay P95 (ms)",
+    direction_text = "lower is better",
+    log_variant = FALSE
+  )
+  plot_metric_box_per_protocol_by_mtu(
+    per_run,
+    metric_col = "delay_p95_ms",
+    base_dir = delay_bitrate_dir,
+    file_stub = "delay_p95_by_bitrate_boxplot.png",
+    title_text = "Delay P95 Boxplot by Bitrate",
+    ylab_text = "Delay P95 (ms)",
+    direction_text = "lower is better",
+    log_variant = TRUE
+  )
 
   for (mtu_value in mtu_levels) {
-    mtu_data <- per_run[per_run$mtu == mtu_value, , drop = FALSE]
+    mtu_data <- grouped[grouped$mtu == mtu_value, , drop = FALSE]
     if (nrow(mtu_data) == 0) {
       next
     }
@@ -470,16 +582,16 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
   # Packet loss plots.
   packet_loss_dir <- file.path(plot_dir, "packet_loss")
   dir.create(packet_loss_dir, recursive = TRUE, showWarnings = FALSE)
-  plot_run_metric_by_mtu("inferred_loss_pct", packet_loss_dir, "inferred_loss_by_run.png", "Inferred Packet Loss by Run", "Inferred Loss (%)", "lower is better")
-  plot_run_metric_by_mtu("duplicate_rate_pct", packet_loss_dir, "duplicate_rate_by_run.png", "Duplicate Rate by Run", "Duplicate Rate (%)", "lower is better")
+  plot_run_metric_by_mtu("inferred_loss_pct", packet_loss_dir, "inferred_loss_by_condition.png", "Inferred Packet Loss by Condition", "Inferred Loss (%)", "lower is better")
+  plot_run_metric_by_mtu("duplicate_rate_pct", packet_loss_dir, "duplicate_rate_by_condition.png", "Duplicate Packet Rate by Condition", "Duplicate Packet Rate (%)", "lower is better")
   plot_metric_by_bitrate_and_protocol(
     metric_col = "inferred_loss_pct",
     file_name = "compare_inferred_loss_by_bitrate.png",
-    title_text = "Protocol Comparison: Inferred Loss by Bitrate",
+    title_text = "Protocol Comparison: Inferred Packet Loss by Bitrate",
     ylab_text = "Inferred Loss (%)"
   )
   for (mtu_value in mtu_levels) {
-    d <- per_run[per_run$mtu == mtu_value, , drop = FALSE]
+    d <- grouped[grouped$mtu == mtu_value, , drop = FALSE]
     if (nrow(d) == 0) {
       next
     }
@@ -511,17 +623,17 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
     dev.off()
   }
 
-  # Misordered packet plots.
+  # Reordering plots.
   misordered_dir <- file.path(plot_dir, "misordered")
   dir.create(misordered_dir, recursive = TRUE, showWarnings = FALSE)
-  plot_run_metric_by_mtu("reorder_events", misordered_dir, "misordered_events_by_run.png", "Misordered Packets by Run (Reorder Events)", "Reorder Events (count)", "lower is better")
-  plot_run_metric_by_mtu("reorder_rate_pct", misordered_dir, "misordered_rate_by_run.png", "Misordered Packet Rate by Run", "Reorder Rate (%)", "lower is better")
-  plot_run_metric_by_mtu("misordered_packet_count", misordered_dir, "misordered_amount_by_run.png", "Misordered Packet Amount by Run", "Misordered Packets (count)", "lower is better")
-  plot_run_metric_by_mtu("misordered_bytes", misordered_dir, "misordered_bytes_by_run.png", "Misordered Bytes by Run", "Misordered Bytes", "lower is better")
-  plot_run_metric_by_mtu("misordered_bytes_rate_pct", misordered_dir, "misordered_bytes_rate_by_run.png", "Misordered Bytes Rate by Run", "Misordered Bytes Rate (%)", "lower is better")
-  plot_run_metric_by_mtu("reorder_depth_max", misordered_dir, "misordered_depth_by_run.png", "Maximum Reorder Depth by Run", "Max Reorder Depth (indices)", "lower is better")
-  plot_run_metric_by_mtu("reorder_depth_mean_misordered", misordered_dir, "misordered_magnitude_by_run.png", "Misordered Magnitude by Run", "Mean Reorder Depth (misordered packets only)", "lower is better")
-  plot_run_metric_by_mtu("reorder_depth_p95_misordered", misordered_dir, "misordered_depth_p95_by_run.png", "Misordered Depth P95 by Run", "Reorder Depth P95", "lower is better")
+  plot_run_metric_by_mtu("reorder_events", misordered_dir, "reorder_events_by_condition.png", "Out-of-Order Packets by Condition (Reorder Events)", "Reorder Events (count)", "lower is better")
+  plot_run_metric_by_mtu("reorder_rate_pct", misordered_dir, "reorder_rate_by_condition.png", "Out-of-Order Packet Rate by Condition", "Out-of-Order Rate (%)", "lower is better")
+  plot_run_metric_by_mtu("misordered_packet_count", misordered_dir, "out_of_order_packet_count_by_condition.png", "Out-of-Order Packet Count by Condition", "Out-of-Order Packets (count)", "lower is better")
+  plot_run_metric_by_mtu("misordered_bytes", misordered_dir, "out_of_order_bytes_by_condition.png", "Out-of-Order Bytes by Condition", "Out-of-Order Bytes", "lower is better")
+  plot_run_metric_by_mtu("misordered_bytes_rate_pct", misordered_dir, "out_of_order_bytes_rate_by_condition.png", "Out-of-Order Bytes Rate by Condition", "Out-of-Order Bytes Rate (%)", "lower is better")
+  plot_run_metric_by_mtu("reorder_depth_max", misordered_dir, "reorder_depth_max_by_condition.png", "Maximum Reorder Depth by Condition", "Maximum Reorder Depth (indices)", "lower is better")
+  plot_run_metric_by_mtu("reorder_depth_mean_misordered", misordered_dir, "reorder_depth_mean_by_condition.png", "Mean Reorder Depth by Condition (Out-of-Order Packets)", "Mean Reorder Depth (out-of-order packets)", "lower is better")
+  plot_run_metric_by_mtu("reorder_depth_p95_misordered", misordered_dir, "reorder_depth_p95_by_condition.png", "Reorder Depth P95 by Condition", "Reorder Depth P95", "lower is better")
   plot_protocol_box_by_mtu(
     misorder_streak_events,
     metric_col = "streak_length",
@@ -567,8 +679,8 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
   plot_metric_by_bitrate_and_protocol(
     metric_col = "misordered_packet_rate_pct",
     file_name = "compare_misorder_rate_by_bitrate.png",
-    title_text = "Protocol Comparison: Misorder Rate by Bitrate",
-    ylab_text = "Misordered Packet Rate (%)"
+    title_text = "Protocol Comparison: Out-of-Order Packet Rate by Bitrate",
+    ylab_text = "Out-of-Order Packet Rate (%)"
   )
   plot_metric_by_bitrate_and_protocol(
     metric_col = "stability_score_0_100",
@@ -599,14 +711,14 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
   plot_metric_by_mtu_and_protocol(
     metric_col = "misordered_bytes_rate_pct",
     file_stub = "compare_misordered_bytes_rate_by_mtu",
-    title_text = "Protocol Comparison: Misordered Bytes Rate by MTU",
-    ylab_text = "Misordered Bytes Rate (%)"
+    title_text = "Protocol Comparison: Out-of-Order Bytes Rate by MTU",
+    ylab_text = "Out-of-Order Bytes Rate (%)"
   )
   plot_metric_by_mtu_and_protocol(
     metric_col = "misordered_bytes",
     file_stub = "compare_misordered_bytes_by_mtu",
-    title_text = "Protocol Comparison: Misordered Bytes by MTU",
-    ylab_text = "Misordered Bytes"
+    title_text = "Protocol Comparison: Out-of-Order Bytes by MTU",
+    ylab_text = "Out-of-Order Bytes"
   )
   plot_metric_by_mtu_and_protocol(
     metric_col = "stability_score_0_100",
@@ -618,11 +730,18 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
   # Throughput timelines.
   for (mtu_value in mtu_levels) {
     d <- throughput_ts[throughput_ts$mtu == mtu_value, ]
+    if (nrow(d) > 0) {
+      d <- aggregate(
+        cbind(throughput_mbps, bytes) ~ protocol + bitrate_kbps + mtu + bucket + window_start_ms,
+        data = d,
+        FUN = mean
+      )
+    }
     mtu_dir <- mtu_group_dir(delay_dir, mtu_value)
     dir.create(mtu_dir, recursive = TRUE, showWarnings = FALSE)
     png(file.path(mtu_dir, "throughput_timeline.png"), width = 1400, height = 800)
     if (nrow(d) > 0) {
-      d <- d[order(d$protocol, d$bitrate_kbps, d$file, d$bucket), ]
+      d <- d[order(d$protocol, d$bitrate_kbps, d$mtu, d$bucket), ]
       ylim <- range(d$throughput_mbps, na.rm = TRUE)
       xlim <- range(d$window_start_ms, na.rm = TRUE)
       plot(NA,
@@ -630,17 +749,17 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
           ylim = c(0, max(ylim, na.rm = TRUE)),
         xlab = "Window Start (ms)",
         ylab = "Throughput (Mbps)",
-        main = sprintf("Throughput Timelines at MTU %s (higher is better) [%s]", mtu_value, condition_run_label(d))
+        main = sprintf("Throughput Timelines at MTU %s (higher is better) [%s]", mtu_value, condition_run_label(grouped[grouped$mtu == mtu_value, , drop = FALSE]))
       )
 
-      run_levels <- unique(d$file)
+      condition_ids <- unique(paste(d$protocol, d$bitrate_kbps, d$mtu, sep = "|"))
       lty_choices <- c(1, 2, 3, 4, 5, 6)
       bitrate_levels <- sort(unique(d$bitrate_kbps))
       bitrate_lty <- setNames(lty_choices[((seq_along(bitrate_levels) - 1) %% length(lty_choices)) + 1], bitrate_levels)
 
-      for (i in seq_along(run_levels)) {
-        f <- run_levels[[i]]
-        dd <- d[d$file == f, ]
+      for (i in seq_along(condition_ids)) {
+        cid <- condition_ids[[i]]
+        dd <- d[paste(d$protocol, d$bitrate_kbps, d$mtu, sep = "|") == cid, ]
         proto <- as.character(dd$protocol[[1]])
         bitrate_value <- as.character(dd$bitrate_kbps[[1]])
         line_col <- protocol_palette[[proto]]
@@ -683,11 +802,11 @@ plot_outputs <- function(per_run, throughput_ts, misorder_streak_events, out_dir
         xlab = "Window Start (ms)",
         ylab = "Throughput (Mbps)",
         log = "y",
-        main = sprintf("Throughput Timelines at MTU %s (log scale; higher is better) [%s]", mtu_value, condition_run_label(d))
+        main = sprintf("Throughput Timelines at MTU %s (log scale; higher is better) [%s]", mtu_value, condition_run_label(grouped[grouped$mtu == mtu_value, , drop = FALSE]))
       )
-      for (i in seq_along(run_levels)) {
-        f <- run_levels[[i]]
-        dd <- d[d$file == f, ]
+      for (i in seq_along(condition_ids)) {
+        cid <- condition_ids[[i]]
+        dd <- d[paste(d$protocol, d$bitrate_kbps, d$mtu, sep = "|") == cid, ]
         proto <- as.character(dd$protocol[[1]])
         bitrate_value <- as.character(dd$bitrate_kbps[[1]])
         line_col <- protocol_palette[[proto]]

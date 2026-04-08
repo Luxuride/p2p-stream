@@ -69,14 +69,15 @@ Each of those folders now also contains logarithmic companion plots with a `_log
 
 Notable plot groups:
 
-- Delay plots: delay mean, p95, p99, jitter p95, and delay CV by run, plus protocol boxplots.
-- Delay plots: delay mean, p95, p99, jitter p95, and delay CV by run, plus protocol boxplots split by MTU.
-- Delay plots: delay mean, p95, p99, jitter p95, and delay CV by run, plus delay spike boxplots split by MTU.
-- Packet loss plots: inferred loss and duplicate rate by run, loss vs goodput, plus protocol comparison by bitrate.
-- Misordered plots: reorder events/rate/amount, max depth, mean depth, and p95 depth by run.
-- Misordered plots: reorder events/rate/amount, misordered bytes/rate, max depth, mean depth, p95 depth, and misorder streak boxplots by MTU.
-- Bitrate comparison plots: goodput, delay p95, inferred loss, misorder rate, and stability score.
-- MTU comparison plots: one file per bitrate comparing protocols across MTUs for goodput, delay p95, inferred loss, misordered bytes/rate, and stability score.
+- Delay plots: delay mean, p95, p99, jitter p95, and delay CV by condition, plus protocol boxplots.
+- Delay plots: delay p95 boxplots split by bitrate, both protocol-comparison and per-protocol views.
+- Delay plots: delay mean, p95, p99, jitter p95, and delay CV by condition, plus protocol boxplots split by MTU.
+- Delay plots: delay mean, p95, p99, jitter p95, and delay CV by condition, plus delay spike boxplots split by MTU.
+- Packet loss plots: inferred packet loss and duplicate packet rate by condition, loss vs goodput, plus protocol comparison by bitrate.
+- Reordering plots: reorder events/rate, out-of-order packet count, max depth, mean depth, and p95 depth by condition.
+- Reordering plots: reorder events/rate, out-of-order bytes/rate, max depth, mean depth, p95 depth, and misorder streak boxplots by MTU.
+- Bitrate comparison plots: goodput, delay p95, inferred packet loss, out-of-order packet rate, and stability score.
+- MTU comparison plots: one file per bitrate comparing protocols across MTUs for goodput, delay p95, inferred packet loss, out-of-order bytes/rate, and stability score, using condition-level averages across runs.
 
 ## Notes
 
