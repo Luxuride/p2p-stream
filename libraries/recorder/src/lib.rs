@@ -18,6 +18,8 @@ pub struct ScreenCapture<'a> {
     active_capture: Option<ActiveCapture<'a>>,
     pipeline: Option<Pipeline>,
     app_sink: Option<AppSink>,
+    bitrate: u32,
+    mtu: u32,
 }
 
 // Helper function to create a software encoder when hardware acceleration fails
@@ -34,6 +36,16 @@ fn fallback_to_software_encoder() -> Result<gst::Element> {
 }
 
 impl<'a> ScreenCapture<'_> {
+    pub fn new(bitrate: u32, mtu: u32) -> Self {
+        Self {
+            active_capture: None,
+            pipeline: None,
+            app_sink: None,
+            bitrate,
+            mtu,
+        }
+    }
+
     async fn open_portal() -> Result<ActiveCapture<'a>> {
         let proxy = Screencast::new().await?;
         let session = proxy.create_session().await?;
@@ -92,7 +104,7 @@ impl<'a> ScreenCapture<'_> {
             gst::ElementFactory::make("vaapipostproc").build(),
             gst::ElementFactory::make("vaapih264enc")
                 .property("quality-level", 6u32)
-                .property("bitrate", 1000u32)
+                .property("bitrate", self.bitrate)
                 .property("keyframe-period", 0u32)
                 .build(),
         ) {
@@ -106,11 +118,9 @@ impl<'a> ScreenCapture<'_> {
         let parse = gst::ElementFactory::make("h264parse")
             .property("config-interval", 1i32)
             .build()?;
-        let mux = gst::ElementFactory::make("mpegtsmux")
-            .property("alignment", 7i32)
-            .build()?;
-        let pay = gst::ElementFactory::make("rtpmp2tpay")
-            .property("pt", 33u32)
+        let pay = gst::ElementFactory::make("rtph264pay")
+            .property("mtu", self.mtu)
+            .property("pt", 96u32)
             .build()?;
 
         let payload_queue = gst::ElementFactory::make("queue").build()?;
@@ -132,7 +142,6 @@ impl<'a> ScreenCapture<'_> {
             &vaapi_post_proc,
             &encoder,
             &parse,
-            &mux,
             &pay,
             &payload_queue,
             app_sink.upcast_ref(),
@@ -148,7 +157,6 @@ impl<'a> ScreenCapture<'_> {
             &vaapi_post_proc,
             &encoder,
             &parse,
-            &mux,
             &pay,
             &payload_queue,
             app_sink.upcast_ref(),

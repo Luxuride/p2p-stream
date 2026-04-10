@@ -260,7 +260,7 @@ async fn main() -> Result<()> {
                 Protocol::Stream => Arc::new(Mutex::new(
                     network::stream::P2PStreamSwarm::run("stream").await?,
                 )),
-            })
+            }, args.bitrate, args.chunk_size)
             .await?;
 
             tokio::select! {

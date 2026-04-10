@@ -12,7 +12,7 @@ pub struct ScreenProducer<'a> {
 }
 
 impl<'a> ScreenProducer<'a> {
-    pub async fn new(swarm: Arc<Mutex<dyn P2PSwarm>>) -> Result<Self> {
+    pub async fn new(swarm: Arc<Mutex<dyn P2PSwarm>>, bitrate: u32, mtu: u32) -> Result<Self> {
         let (video_tx, mut video_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
         tokio::spawn(async move {
@@ -28,7 +28,7 @@ impl<'a> ScreenProducer<'a> {
             }
         });
 
-        let mut screen_capture = ScreenCapture::default();
+        let mut screen_capture = ScreenCapture::new(bitrate, mtu);
         trace!("Starting screen capture...");
         screen_capture.start().await?;
         trace!("Setting up callback...");
