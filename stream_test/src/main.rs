@@ -1,9 +1,11 @@
 mod analyze;
 mod capture;
+mod screen_producer;
 mod render;
 
 use crate::analyze::Analyze;
 use crate::capture::Capture;
+use crate::screen_producer::ScreenProducer;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use log::{info, warn};
@@ -38,6 +40,7 @@ enum Role {
     Analyzer,
     Renderer,
     Producer,
+    ScreenProducer,
 }
 
 #[derive(Parser, Debug)]
@@ -243,6 +246,30 @@ async fn main() -> Result<()> {
                     capture.video_reader.stop().await?;
                 }
             }
+            std::process::exit(0);
+        }
+        Role::ScreenProducer => {
+            println!("Starting screen producer");
+            let mut screen_producer = ScreenProducer::new(match args.protocol {
+                Protocol::Gossipsub => Arc::new(Mutex::new(
+                    network::gossipsub::GossipP2P::run("gossipsub").await?,
+                )),
+                Protocol::Hybrid => Arc::new(Mutex::new(
+                    network::hybrid::HybridP2P::run("hybrid").await?,
+                )),
+                Protocol::Stream => Arc::new(Mutex::new(
+                    network::stream::P2PStreamSwarm::run("stream").await?,
+                )),
+            })
+            .await?;
+
+            tokio::select! {
+                _ = ctrl_c() => {
+                    info!("Screen producer received Ctrl+C, stopping capture");
+                    screen_producer.stop().await?;
+                }
+            }
+
             std::process::exit(0);
         }
     }
