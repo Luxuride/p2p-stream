@@ -1,7 +1,7 @@
 mod analyze;
 mod capture;
-mod screen_producer;
 mod render;
+mod screen_producer;
 
 use crate::analyze::Analyze;
 use crate::capture::Capture;
@@ -250,17 +250,21 @@ async fn main() -> Result<()> {
         }
         Role::ScreenProducer => {
             println!("Starting screen producer");
-            let mut screen_producer = ScreenProducer::new(match args.protocol {
-                Protocol::Gossipsub => Arc::new(Mutex::new(
-                    network::gossipsub::GossipP2P::run("gossipsub").await?,
-                )),
-                Protocol::Hybrid => Arc::new(Mutex::new(
-                    network::hybrid::HybridP2P::run("hybrid").await?,
-                )),
-                Protocol::Stream => Arc::new(Mutex::new(
-                    network::stream::P2PStreamSwarm::run("stream").await?,
-                )),
-            }, args.bitrate, args.chunk_size)
+            let mut screen_producer = ScreenProducer::new(
+                match args.protocol {
+                    Protocol::Gossipsub => Arc::new(Mutex::new(
+                        network::gossipsub::GossipP2P::run("gossipsub").await?,
+                    )),
+                    Protocol::Hybrid => {
+                        Arc::new(Mutex::new(network::hybrid::HybridP2P::run("hybrid").await?))
+                    }
+                    Protocol::Stream => Arc::new(Mutex::new(
+                        network::stream::P2PStreamSwarm::run("stream").await?,
+                    )),
+                },
+                args.bitrate,
+                args.chunk_size,
+            )
             .await?;
 
             tokio::select! {

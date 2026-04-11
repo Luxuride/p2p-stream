@@ -90,14 +90,14 @@ plot_outputs <- function(per_run, grouped, throughput_ts, misorder_streak_events
   }
 
   plot_pointsize <- 22
-  plot_cex <- 1.15
-  plot_cex_axis <- 1.25
-  plot_cex_lab <- 1.25
-  plot_cex_main <- 1.25
-  plot_cex_sub <- 1.1
-  plot_legend_cex <- 1.25
-  plot_legend_pt_cex <- 1.25
-  plot_width <- 1800
+  plot_cex <- 1.3
+  plot_cex_axis <- 1.3
+  plot_cex_lab <- 1.35
+  plot_cex_main <- 1.2
+  plot_cex_sub <- 1.25
+  plot_legend_cex <- 1.35
+  plot_legend_pt_cex <- 1.35
+  plot_width <- 2000
   plot_height <- 1000
 
   plot_png <- function(file_path, width = plot_width, height = plot_height) {

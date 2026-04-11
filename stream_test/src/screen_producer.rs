@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::{info, trace, warn};
-use network::protocol::VideoStreamChunk;
 use network::P2PSwarm;
+use network::protocol::VideoStreamChunk;
 use recorder::ScreenCapture;
 use std::sync::Arc;
 use std::time::SystemTime;
